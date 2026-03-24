@@ -7,6 +7,8 @@ description: Debug container agent issues. Use when things aren't working, conta
 
 This guide covers debugging the containerized agent execution system.
 
+The current runtime uses GitHub Copilot CLI and the Copilot SDK inside the container. NanoClaw still feeds group memory from `CLAUDE.md` files for compatibility, and it still uses Anthropic-compatible credentials through the host credential proxy.
+
 ## Architecture Overview
 
 ```
@@ -14,17 +16,16 @@ Host (macOS)                          Container (Linux VM)
 ─────────────────────────────────────────────────────────────
 src/container-runner.ts               container/agent-runner/
     │                                      │
-    │ spawns container                      │ runs Claude Agent SDK
+  │ spawns container                      │ runs GitHub Copilot SDK/CLI
     │ with volume mounts                   │ with MCP servers
     │                                      │
-    ├── data/env/env ──────────────> /workspace/env-dir/env
     ├── groups/{folder} ───────────> /workspace/group
     ├── data/ipc/{folder} ────────> /workspace/ipc
-    ├── data/sessions/{folder}/.claude/ ──> /home/node/.claude/ (isolated per-group)
+  ├── data/sessions/{folder}/.copilot/ ─> /workspace/session (isolated per-group)
     └── (main only) project root ──> /workspace/project
 ```
 
-**Important:** The container runs as user `node` with `HOME=/home/node`. Session files must be mounted to `/home/node/.claude/` (not `/root/.claude/`) for session resumption to work.
+**Important:** Session state is now isolated at `/workspace/session`. Do not debug against `/home/node/.claude/` — that path is no longer the source of truth for NanoClaw session resumption.
 
 ## Log Locations
 
@@ -33,7 +34,7 @@ src/container-runner.ts               container/agent-runner/
 | **Main app logs** | `logs/nanoclaw.log` | Host-side WhatsApp, routing, container spawning |
 | **Main app errors** | `logs/nanoclaw.error.log` | Host-side errors |
 | **Container run logs** | `groups/{folder}/logs/container-*.log` | Per-run: input, mounts, stderr, stdout |
-| **Claude sessions** | `~/.claude/projects/` | Claude Code session history |
+| **Session state mirror** | `data/sessions/{group}/.copilot/` | Per-group Copilot config, skill mirror, session workspace |
 
 ## Enabling Debug Logging
 
@@ -57,7 +58,7 @@ Debug level shows:
 
 ## Common Issues
 
-### 1. "Claude Code process exited with code 1"
+### 1. "Copilot agent process exited with code 1"
 
 **Check the container log file** in `groups/{folder}/logs/container-*.log`
 
@@ -65,12 +66,12 @@ Common causes:
 
 #### Missing Authentication
 ```
-Invalid API key · Please run /login
+Authentication failed for the configured provider
 ```
-**Fix:** Ensure `.env` file exists with either OAuth token or API key:
+**Fix:** Ensure `.env` file exists with either Anthropic OAuth token or API key. The Copilot harness still runs against NanoClaw's Anthropic-compatible provider path:
 ```bash
 cat .env  # Should show one of:
-# CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...  (subscription)
+# CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...  (subscription-backed token)
 # ANTHROPIC_API_KEY=sk-ant-api03-...        (pay-per-use)
 ```
 
@@ -80,18 +81,17 @@ cat .env  # Should show one of:
 ```
 **Fix:** Container must run as non-root user. Check Dockerfile has `USER node`.
 
-### 2. Environment Variables Not Passing
+### 2. Credential Proxy Expectations
 
-**Runtime note:** Environment variables passed via `-e` may be lost when using `-i` (interactive/piped stdin).
+NanoClaw does not pass real secrets into the container. The host starts a credential proxy, and the container receives placeholder auth plus `ANTHROPIC_BASE_URL` pointing at the proxy.
 
-**Workaround:** The system extracts only authentication variables (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`) from `.env` and mounts them for sourcing inside the container. Other env vars are not exposed.
-
-To verify env vars are reaching the container:
+To verify the container has the expected proxy wiring:
 ```bash
 echo '{}' | docker run -i \
-  -v $(pwd)/data/env:/workspace/env-dir:ro \
+  -e ANTHROPIC_BASE_URL=http://host.docker.internal:3001 \
+  -e ANTHROPIC_API_KEY=placeholder \
   --entrypoint /bin/bash nanoclaw-agent:latest \
-  -c 'export $(cat /workspace/env-dir/env | xargs); echo "OAuth: ${#CLAUDE_CODE_OAUTH_TOKEN} chars, API: ${#ANTHROPIC_API_KEY} chars"'
+  -c 'echo "BASE_URL=$ANTHROPIC_BASE_URL" && echo "API_KEY=$ANTHROPIC_API_KEY"'
 ```
 
 ### 3. Mount Issues
@@ -115,10 +115,10 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c 'ls -la /workspa
 Expected structure:
 ```
 /workspace/
-├── env-dir/env           # Environment file (CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY)
 ├── group/                # Current group folder (cwd)
 ├── project/              # Project root (main channel only)
 ├── global/               # Global CLAUDE.md (non-main only)
+├── session/              # Per-group Copilot session/config/skills mirror
 ├── ipc/                  # Inter-process communication
 │   ├── messages/         # Outgoing WhatsApp messages
 │   ├── tasks/            # Scheduled task commands
@@ -140,33 +140,32 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
 
 All of `/workspace/` and `/app/` should be owned by `node`.
 
-### 5. Session Not Resuming / "Claude Code process exited with code 1"
+### 5. Session Not Resuming / "Copilot agent process exited with code 1"
 
-If sessions aren't being resumed (new session ID every time), or Claude Code exits with code 1 when resuming:
+If sessions aren't being resumed (new session ID every time), or the Copilot runner exits with code 1 when resuming:
 
-**Root cause:** The SDK looks for sessions at `$HOME/.claude/projects/`. Inside the container, `HOME=/home/node`, so it looks at `/home/node/.claude/projects/`.
+**Root cause:** NanoClaw now pins Copilot session/config state to `/workspace/session`. If that mount is missing or empty, the runner will create a fresh session every time.
 
 **Check the mount path:**
 ```bash
-# In container-runner.ts, verify mount is to /home/node/.claude/, NOT /root/.claude/
-grep -A3 "Claude sessions" src/container-runner.ts
+# In container-runner.ts, verify the isolated session mount points at /workspace/session
+grep -A6 "Per-group Copilot session directory" src/container-runner.ts
 ```
 
 **Verify sessions are accessible:**
 ```bash
 docker run --rm --entrypoint /bin/bash \
-  -v ~/.claude:/home/node/.claude \
+  -v $(pwd)/data/sessions/test/.copilot:/workspace/session \
   nanoclaw-agent:latest -c '
-echo "HOME=$HOME"
-ls -la $HOME/.claude/projects/ 2>&1 | head -5
+ls -la /workspace/session 2>&1 | head -20
 '
 ```
 
-**Fix:** Ensure `container-runner.ts` mounts to `/home/node/.claude/`:
+**Fix:** Ensure `container-runner.ts` mounts the per-group session directory to `/workspace/session`:
 ```typescript
 mounts.push({
-  hostPath: claudeDir,
-  containerPath: '/home/node/.claude',  // NOT /root/.claude
+  hostPath: groupSessionsDir,
+  containerPath: '/workspace/session',
   readonly: false
 });
 ```
@@ -192,13 +191,13 @@ echo '{"prompt":"What is 2+2?","groupFolder":"test","chatJid":"test@g.us","isMai
   nanoclaw-agent:latest
 ```
 
-### Test Claude Code directly:
+### Test Copilot CLI directly:
 ```bash
 docker run --rm --entrypoint /bin/bash \
-  -v $(pwd)/data/env:/workspace/env-dir:ro \
+  -e ANTHROPIC_BASE_URL=http://host.docker.internal:3001 \
+  -e ANTHROPIC_API_KEY=placeholder \
   nanoclaw-agent:latest -c '
-  export $(cat /workspace/env-dir/env | xargs)
-  claude -p "Say hello" --dangerously-skip-permissions --allowedTools ""
+  /app/node_modules/.bin/copilot -p "Say hello" --allow-all --output-format text --stream off
 '
 ```
 
@@ -207,25 +206,21 @@ docker run --rm --entrypoint /bin/bash \
 docker run --rm -it --entrypoint /bin/bash nanoclaw-agent:latest
 ```
 
-## SDK Options Reference
+## Runtime Options Reference
 
-The agent-runner uses these Claude Agent SDK options:
+The agent-runner now creates a Copilot session with these key options:
 
 ```typescript
-query({
-  prompt: input.prompt,
-  options: {
-    cwd: '/workspace/group',
-    allowedTools: ['Bash', 'Read', 'Write', ...],
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,  // Required with bypassPermissions
-    settingSources: ['project'],
-    mcpServers: { ... }
-  }
+client.createSession({
+  configDir: '/workspace/session',
+  workingDirectory: '/workspace/group',
+  onPermissionRequest: approveAll,
+  systemMessage: { content: mergedClaudeMdContext },
+  mcpServers: { ... }
 })
 ```
 
-**Important:** `allowDangerouslySkipPermissions: true` is required when using `permissionMode: 'bypassPermissions'`. Without it, Claude Code exits with code 1.
+**Important:** Container context is now injected through Copilot `systemMessage` and MCP server configuration, not Claude `settingSources` or `permissionMode` flags.
 
 ## Rebuilding After Changes
 
@@ -252,8 +247,8 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
   echo "=== Node version ==="
   node --version
 
-  echo "=== Claude Code version ==="
-  claude --version
+  echo "=== Copilot CLI version ==="
+  copilot --version || /app/node_modules/.bin/copilot --version
 
   echo "=== Installed packages ==="
   ls /app/node_modules/
@@ -262,12 +257,11 @@ docker run --rm --entrypoint /bin/bash nanoclaw-agent:latest -c '
 
 ## Session Persistence
 
-Claude sessions are stored per-group in `data/sessions/{group}/.claude/` for security isolation. Each group has its own session directory, preventing cross-group access to conversation history.
+Copilot session state is stored per-group in `data/sessions/{group}/.copilot/` for security isolation. Each group has its own isolated session directory, preventing cross-group access to conversation history.
 
-**Critical:** The mount path must match the container user's HOME directory:
-- Container user: `node`
-- Container HOME: `/home/node`
-- Mount target: `/home/node/.claude/` (NOT `/root/.claude/`)
+**Critical:** The mount path must match NanoClaw's configured Copilot session directory:
+- Host session directory: `data/sessions/{group}/.copilot/`
+- Container mount target: `/workspace/session`
 
 To clear sessions:
 
@@ -276,7 +270,7 @@ To clear sessions:
 rm -rf data/sessions/
 
 # Clear sessions for a specific group
-rm -rf data/sessions/{groupFolder}/.claude/
+rm -rf data/sessions/{groupFolder}/.copilot/
 
 # Also clear the session ID from NanoClaw's tracking (stored in SQLite)
 sqlite3 store/messages.db "DELETE FROM sessions WHERE group_folder = '{groupFolder}'"
@@ -322,28 +316,25 @@ Run this to check common issues:
 ```bash
 echo "=== Checking NanoClaw Container Setup ==="
 
-echo -e "\n1. Authentication configured?"
+echo -e "\n1. Provider credentials configured?"
 [ -f .env ] && (grep -q "CLAUDE_CODE_OAUTH_TOKEN=sk-" .env || grep -q "ANTHROPIC_API_KEY=sk-" .env) && echo "OK" || echo "MISSING - add CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY to .env"
 
-echo -e "\n2. Env file copied for container?"
-[ -f data/env/env ] && echo "OK" || echo "MISSING - will be created on first run"
-
-echo -e "\n3. Container runtime running?"
+echo -e "\n2. Container runtime running?"
 docker info &>/dev/null && echo "OK" || echo "NOT RUNNING - start Docker Desktop (macOS) or sudo systemctl start docker (Linux)"
 
-echo -e "\n4. Container image exists?"
+echo -e "\n3. Container image exists?"
 echo '{}' | docker run -i --entrypoint /bin/echo nanoclaw-agent:latest "OK" 2>/dev/null || echo "MISSING - run ./container/build.sh"
 
-echo -e "\n5. Session mount path correct?"
-grep -q "/home/node/.claude" src/container-runner.ts 2>/dev/null && echo "OK" || echo "WRONG - should mount to /home/node/.claude/, not /root/.claude/"
+echo -e "\n4. Session mount path correct?"
+grep -q "/workspace/session" src/container-runner.ts 2>/dev/null && echo "OK" || echo "WRONG - should mount to /workspace/session"
 
-echo -e "\n6. Groups directory?"
+echo -e "\n5. Groups directory?"
 ls -la groups/ 2>/dev/null || echo "MISSING - run setup"
 
-echo -e "\n7. Recent container logs?"
+echo -e "\n6. Recent container logs?"
 ls -t groups/*/logs/container-*.log 2>/dev/null | head -3 || echo "No container logs yet"
 
-echo -e "\n8. Session continuity working?"
-SESSIONS=$(grep "Session initialized" logs/nanoclaw.log 2>/dev/null | tail -5 | awk '{print $NF}' | sort -u | wc -l)
+echo -e "\n7. Session continuity working?"
+SESSIONS=$(grep "Copilot session" groups/*/logs/container-*.log 2>/dev/null | tail -5 | awk '{print $NF}' | sort -u | wc -l)
 [ "$SESSIONS" -le 2 ] && echo "OK (recent sessions reusing IDs)" || echo "CHECK - multiple different session IDs, may indicate resumption issues"
 ```

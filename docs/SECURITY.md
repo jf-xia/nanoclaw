@@ -1,5 +1,7 @@
 # NanoClaw Security Model
 
+NanoClaw now runs GitHub Copilot CLI inside the container, using the Copilot SDK plus a custom Anthropic-compatible provider routed through the host credential proxy. Some on-disk names such as `CLAUDE.md` remain for compatibility, but they no longer indicate that the runtime is Claude Code.
+
 ## Trust Model
 
 | Entity | Trust Level | Rationale |
@@ -42,11 +44,11 @@ private_key, .secret
 
 **Read-Only Project Root:**
 
-The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, `.claude/`) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
+The main group's project root is mounted read-only. Writable paths the agent needs (group folder, IPC, session state) are mounted separately. This prevents the agent from modifying host application code (`src/`, `dist/`, `package.json`, etc.) which would bypass the sandbox entirely on next restart.
 
 ### 3. Session Isolation
 
-Each group has isolated Claude sessions at `data/sessions/{group}/.claude/`:
+Each group has isolated Copilot session state at `data/sessions/{group}/.copilot/`, mounted into the container at `/workspace/session`:
 - Groups cannot see other groups' conversation history
 - Session data includes full message history and file contents read
 - Prevents cross-group information disclosure
@@ -71,7 +73,7 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 **How it works:**
 1. Host starts a credential proxy on `CREDENTIAL_PROXY_PORT` (default: 3001)
 2. Containers receive `ANTHROPIC_BASE_URL=http://host.docker.internal:<port>` and `ANTHROPIC_API_KEY=placeholder`
-3. The SDK sends API requests to the proxy with the placeholder key
+3. The Copilot runtime's custom provider sends API requests to the proxy with the placeholder key
 4. The proxy strips placeholder auth, injects real credentials (`x-api-key` or `Authorization: Bearer`), and forwards to `api.anthropic.com`
 5. Agents cannot discover real credentials — not in environment, stdin, files, or `/proc`
 
@@ -88,6 +90,7 @@ Real API credentials **never enter containers**. Instead, the host runs an HTTP 
 | Project root access | `/workspace/project` (ro) | None |
 | Group folder | `/workspace/group` (rw) | `/workspace/group` (rw) |
 | Global memory | Implicit via project | `/workspace/global` (ro) |
+| Session state | `/workspace/session` (rw) | `/workspace/session` (rw) |
 | Additional mounts | Configurable | Read-only unless allowed |
 | Network access | Unrestricted | Unrestricted |
 | MCP tools | All | All |
