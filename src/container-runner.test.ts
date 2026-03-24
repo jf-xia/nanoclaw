@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
 
+const { mockSpawn } = vi.hoisted(() => ({
+  mockSpawn: vi.fn(),
+}));
+
 // Sentinel markers must match container-runner.ts
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
@@ -26,6 +30,10 @@ vi.mock('./logger.js', () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+vi.mock('./credential-proxy.js', () => ({
+  detectAuthMode: vi.fn(() => 'api-key'),
 }));
 
 // Mock fs
@@ -76,7 +84,7 @@ vi.mock('child_process', async () => {
     await vi.importActual<typeof import('child_process')>('child_process');
   return {
     ...actual,
-    spawn: vi.fn(() => fakeProc),
+    spawn: mockSpawn,
     exec: vi.fn(
       (_cmd: string, _opts: unknown, cb?: (err: Error | null) => void) => {
         if (cb) cb(null);
@@ -115,6 +123,8 @@ describe('container-runner timeout behavior', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     fakeProc = createFakeProcess();
+    mockSpawn.mockClear();
+    mockSpawn.mockImplementation(() => fakeProc);
   });
 
   afterEach(() => {
@@ -206,5 +216,27 @@ describe('container-runner timeout behavior', () => {
     const result = await resultPromise;
     expect(result.status).toBe('success');
     expect(result.newSessionId).toBe('session-456');
+  });
+
+  it('mounts isolated Copilot session storage and placeholder auth env', async () => {
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      undefined,
+    );
+
+    const spawnCall = mockSpawn.mock.calls.at(0);
+    expect(spawnCall).toBeDefined();
+    const spawnArgs = spawnCall![1] as string[];
+    expect(spawnArgs).toContain('ANTHROPIC_API_KEY=placeholder');
+    expect(spawnArgs).toContain(
+      '/tmp/nanoclaw-test-data/sessions/test-group/.copilot:/workspace/session',
+    );
+
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+
+    await resultPromise;
   });
 });
