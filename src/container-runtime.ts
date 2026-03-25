@@ -9,7 +9,13 @@ import { logger } from './logger.js';
 
 /** Returns the path to the compiled agent-runner entry point. */
 export function getAgentRunnerPath(): string {
-  return path.join(process.cwd(), 'container', 'agent-runner', 'dist', 'index.js');
+  return path.join(
+    process.cwd(),
+    'container',
+    'agent-runner',
+    'dist',
+    'index.js',
+  );
 }
 
 /** Ensure the agent-runner is compiled and ready to run. */

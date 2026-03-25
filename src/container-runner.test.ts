@@ -223,7 +223,11 @@ describe('agent-runner timeout behavior', () => {
 
     const spawnCall = mockSpawn.mock.calls.at(0);
     expect(spawnCall).toBeDefined();
-    const [cmd, args, opts] = spawnCall as [string, string[], { env: NodeJS.ProcessEnv; cwd: string }];
+    const [cmd, args, opts] = spawnCall as [
+      string,
+      string[],
+      { env: NodeJS.ProcessEnv; cwd: string },
+    ];
 
     // Spawns node, not docker
     expect(cmd).toBe('node');

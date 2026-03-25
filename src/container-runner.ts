@@ -453,7 +453,6 @@ export async function runContainerAgent(
   });
 }
 
-
 export function writeTasksSnapshot(
   groupFolder: string,
   isMain: boolean,

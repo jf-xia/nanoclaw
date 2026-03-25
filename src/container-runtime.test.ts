@@ -24,7 +24,10 @@ vi.mock('fs', async () => {
   };
 });
 
-import { ensureAgentRunnerReady, getAgentRunnerPath } from './container-runtime.js';
+import {
+  ensureAgentRunnerReady,
+  getAgentRunnerPath,
+} from './container-runtime.js';
 import { logger } from './logger.js';
 
 beforeEach(() => {
@@ -34,7 +37,9 @@ beforeEach(() => {
 describe('getAgentRunnerPath', () => {
   it('returns path to dist/index.js under container/agent-runner', () => {
     const result = getAgentRunnerPath();
-    expect(result).toContain(path.join('container', 'agent-runner', 'dist', 'index.js'));
+    expect(result).toContain(
+      path.join('container', 'agent-runner', 'dist', 'index.js'),
+    );
   });
 });
 
@@ -54,7 +59,9 @@ describe('ensureAgentRunnerReady', () => {
   it('throws when dist/index.js does not exist', () => {
     mockExistsSync.mockReturnValue(false);
 
-    expect(() => ensureAgentRunnerReady()).toThrow('Agent runner is not compiled');
+    expect(() => ensureAgentRunnerReady()).toThrow(
+      'Agent runner is not compiled',
+    );
     expect(logger.error).toHaveBeenCalledWith(
       expect.objectContaining({ agentRunnerPath: expect.any(String) }),
       'Agent runner not compiled',
