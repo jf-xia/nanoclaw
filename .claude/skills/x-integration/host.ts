@@ -1,7 +1,7 @@
 /**
  * X Integration IPC Handler
  *
- * Handles all x_* IPC messages from container agents.
+ * Handles all x_* IPC messages from local agents.
  * This is the entry point for X integration in the host process.
  */
 

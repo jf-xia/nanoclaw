@@ -2,7 +2,7 @@
 
 ## Summary
 
-NanoClaw no longer relies on an external container runtime.
+NanoClaw no longer relies on an external runtime daemon.
 
 - Agents now run as local child processes through `container/agent-runner`.
 - `./container/build.sh` rebuilds the local runner instead of creating an image.

@@ -1,11 +1,11 @@
 /**
- * X Integration - MCP Tool Definitions (Agent/Container Side)
+ * X Integration - MCP Tool Definitions (Agent Side)
  *
- * These tools run inside the container and communicate with the host via IPC.
+ * These tools run inside the local runner and communicate with the host via IPC.
  * The host-side implementation is in host.ts.
  *
- * Note: This file is compiled in the container, not on the host.
- * The @ts-ignore is needed because the SDK is only available in the container.
+ * Note: This file is compiled in the local runner package, not on the host app.
+ * The @ts-ignore is needed because the SDK is only available in the runner package.
  */
 
 // @ts-ignore - SDK available in container environment only
@@ -14,7 +14,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 
-// IPC directories (inside container)
+// IPC directories (inside runner workspace)
 const IPC_DIR = './workspace/ipc';
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
 const RESULTS_DIR = path.join(IPC_DIR, 'x_results');

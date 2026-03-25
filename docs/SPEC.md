@@ -44,20 +44,20 @@ A personal GitHub Copilot-powered assistant with multi-channel support, persiste
 │  └────────┬─────────┘    └────────┬─────────┘    └───────────────┘   │
 │           │                       │                                   │
 │           └───────────┬───────────┘                                   │
-│                       │ spawns container                              │
+│                       │ spawns local runner                           │
 │                       ▼                                               │
 ├──────────────────────────────────────────────────────────────────────┤
-│                     CONTAINER (Linux VM)                               │
+│                   LOCAL AGENT RUNTIME                                  │
 ├──────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────────────────────────────────────────────────────┐    │
 │  │                    AGENT RUNNER                               │    │
 │  │                                                                │    │
-│  │  Working directory: /workspace/group (mounted from host)       │    │
-│  │  Volume mounts:                                                │    │
-│  │    • groups/{name}/ → /workspace/group                         │    │
-│  │    • groups/global/ → /workspace/global/ (non-main only)       │    │
-│  │    • data/sessions/{group}/.copilot/ → /workspace/session      │    │
-│  │    • Additional dirs → /workspace/extra/*                      │    │
+│  │  Working directory: /workspace/group                            │    │
+│  │  Runtime inputs:                                               │    │
+│  │    • groups/{name}/                                            │    │
+│  │    • groups/global/ (non-main only)                            │    │
+│  │    • data/sessions/{group}/.copilot/                           │    │
+│  │    • Additional dirs under /workspace/extra/*                  │    │
 │  │                                                                │    │
 │  │  Tools (all groups):                                           │    │
 │  │    • Bash (runs on host - review access carefully)             │    │
@@ -287,7 +287,7 @@ nanoclaw/
 │   └── skills/
 │       ├── setup/SKILL.md              # /setup - First-time installation
 │       ├── customize/SKILL.md          # /customize - Add capabilities
-│       ├── debug/SKILL.md              # /debug - Container debugging
+│       ├── debug/SKILL.md              # /debug - Local runner debugging
 │       ├── add-telegram/SKILL.md       # /add-telegram - Telegram channel
 │       ├── add-gmail/SKILL.md          # /add-gmail - Gmail integration
 │       ├── add-voice-transcription/    # /add-voice-transcription - Whisper
@@ -311,12 +311,12 @@ nanoclaw/
 │
 ├── data/                          # Application state (gitignored)
 │   ├── sessions/                  # Per-group Copilot session data (.copilot/ dirs)
-│   └── ipc/                       # Container IPC (messages/, tasks/)
+│   └── ipc/                       # Runner IPC (messages/, tasks/)
 │
 ├── logs/                          # Runtime logs (gitignored)
 │   ├── nanoclaw.log               # Host stdout
 │   └── nanoclaw.error.log         # Host stderr
-│   # Note: Per-container logs are in groups/{folder}/logs/container-*.log
+│   # Note: Per-run logs are in groups/{folder}/logs/agent-*.log
 │
 └── launchd/
     └── com.nanoclaw.plist         # macOS service configuration
@@ -335,7 +335,7 @@ export const ASSISTANT_NAME = process.env.ASSISTANT_NAME || 'Andy';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
-// Paths are absolute (required for container mounts)
+// Paths are absolute (required for stable runtime directory setup)
 const PROJECT_ROOT = process.cwd();
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
@@ -377,9 +377,7 @@ setRegisteredGroup("1234567890@g.us", {
 
 Folder names follow the convention `{channel}_{group-name}` (e.g., `whatsapp_family-chat`, `telegram_dev-team`). The main group has `isMain: true` set during registration.
 
-Additional mounts appear at `/workspace/extra/{containerPath}` inside the container.
-
-**Mount syntax note:** Read-write mounts use `-v host:container`, but readonly mounts require `--mount "type=bind,source=...,target=...,readonly"` (the `:ro` suffix may not work on all runtimes).
+Additional mounts appear at `/workspace/extra/{containerPath}` inside the runner workspace.
 
 ### Agent Credentials
 
@@ -715,24 +713,23 @@ tail -f logs/nanoclaw.log
 
 ## Security Considerations
 
-### Container Isolation
+### Native Runtime Scope
 
-All agents run inside containers (lightweight Linux VMs), providing:
-- **Filesystem isolation**: Agents can only access mounted directories
-- **Safe Bash access**: Commands run inside the container, not on your Mac
-- **Network isolation**: Can be configured per-container if needed
-- **Process isolation**: Container processes can't affect the host
-- **Non-root user**: Container runs as unprivileged `node` user (uid 1000)
+All agents run as local child processes, with:
+- **Group-scoped working directories**
+- **Per-group session state**
+- **Host-side mount allowlist validation**
+- **IPC authorization between runner and host**
 
 ### Prompt Injection Risk
 
 Incoming messages could contain malicious instructions attempting to manipulate the agent's behavior.
 
 **Mitigations:**
-- Container isolation limits blast radius
+- Scoped runtime directories limit accidental cross-group access
 - Only registered groups are processed
 - Trigger word required (reduces accidental processing)
-- Agents can only access their group's mounted directories
+- Agents inherit only their allowed runtime directories
 - Main can configure additional directories per group
 - Copilot model/runtime safety guardrails
 

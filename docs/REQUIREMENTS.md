@@ -138,19 +138,19 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - QR code authentication during setup
 
 ### Scheduler
-- Built-in scheduler runs on the host, spawns containers for task execution
-- Custom `nanoclaw` MCP server (inside container) provides scheduling tools
+- Built-in scheduler runs on the host, spawns local runners for task execution
+- Custom `nanoclaw` MCP server (inside the local runner) provides scheduling tools
 - Tools: `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `send_message`
 - Tasks stored in SQLite with run history
 - Scheduler loop checks for due tasks every minute
-- Tasks execute Claude Agent SDK in containerized group context
+- Tasks execute Claude Agent SDK in the group's local runtime context
 
 ### Web Access
 - Built-in WebSearch and WebFetch tools
 - Standard Claude Agent SDK capabilities
 
 ### Browser Automation
-- agent-browser CLI with Chromium in container
+- agent-browser CLI with locally available Chromium
 - Snapshot-based interaction with element references (@e1, @e2, etc.)
 - Screenshots, PDFs, video recording
 - Authentication state persistence

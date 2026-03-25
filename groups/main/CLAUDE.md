@@ -77,16 +77,16 @@ Standard Markdown: `**bold**`, `*italic*`, `[links](url)`, `# headings`.
 
 This is the **main channel**, which has elevated privileges.
 
-## Container Mounts
+## Runtime Paths
 
 Main has read-only access to the project and read-write access to its group folder:
 
-| Container Path | Host Path | Access |
+| Runtime Path | Host Path | Access |
 |----------------|-----------|--------|
 | `/workspace/project` | Project root | read-only |
 | `/workspace/group` | `groups/main/` | read-write |
 
-Key paths inside the container:
+Key paths inside the runtime workspace:
 - `/workspace/project/store/messages.db` - SQLite database
 - `/workspace/project/store/messages.db` (registered_groups table) - Group config
 - `/workspace/project/groups/` - All group folders
@@ -204,7 +204,7 @@ Groups can have extra directories mounted. Add `containerConfig` to their entry:
 }
 ```
 
-The directory will appear at `/workspace/extra/webapp` in that group's container.
+The directory will appear at `/workspace/extra/webapp` in that group's runtime workspace.
 
 #### Sender Allowlist
 
@@ -235,7 +235,7 @@ If the user wants to set up an allowlist, edit `~/.config/nanoclaw/sender-allowl
 Notes:
 - Your own messages (`is_from_me`) explicitly bypass the allowlist in trigger checks. Bot messages are filtered out by the database query before trigger evaluation, so they never reach the allowlist.
 - If the config file doesn't exist or is invalid, all senders are allowed (fail-open)
-- The config file is on the host at `~/.config/nanoclaw/sender-allowlist.json`, not inside the container
+- The config file is on the host at `~/.config/nanoclaw/sender-allowlist.json`, not inside the runner workspace
 
 ### Removing a Group
 
