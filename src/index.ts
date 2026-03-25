@@ -22,10 +22,7 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
-import {
-  cleanupOrphans,
-  ensureContainerRuntimeRunning,
-} from './container-runtime.js';
+import { ensureAgentRunnerReady } from './container-runtime.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -357,7 +354,7 @@ async function runAgent(
     if (output.status === 'error') {
       logger.error(
         { group: group.name, error: output.error },
-        'Container agent error',
+        'Agent error',
       );
       return 'error';
     }
@@ -488,13 +485,12 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureContainerSystemRunning(): void {
-  ensureContainerRuntimeRunning();
-  cleanupOrphans();
+function ensureAgentSystemReady(): void {
+  ensureAgentRunnerReady();
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  ensureAgentSystemReady();
   initDatabase();
   logger.info('Database initialized');
   loadState();

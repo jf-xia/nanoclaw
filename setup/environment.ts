@@ -1,5 +1,5 @@
 /**
- * Step: environment — Detect OS, Node, container runtimes, existing config.
+ * Step: environment — Detect OS, Node, existing config.
  * Replaces 01-check-environment.sh
  */
 import fs from 'fs';
@@ -9,7 +9,7 @@ import Database from 'better-sqlite3';
 
 import { STORE_DIR } from '../src/config.js';
 import { logger } from '../src/logger.js';
-import { commandExists, getPlatform, isHeadless, isWSL } from './platform.js';
+import { getPlatform, isHeadless, isWSL } from './platform.js';
 import { emitStatus } from './status.js';
 
 export async function run(_args: string[]): Promise<void> {
@@ -21,23 +21,9 @@ export async function run(_args: string[]): Promise<void> {
   const wsl = isWSL();
   const headless = isHeadless();
 
-  // Check Apple Container
-  let appleContainer: 'installed' | 'not_found' = 'not_found';
-  if (commandExists('container')) {
-    appleContainer = 'installed';
-  }
-
-  // Check Docker
-  let docker: 'running' | 'installed_not_running' | 'not_found' = 'not_found';
-  if (commandExists('docker')) {
-    try {
-      const { execSync } = await import('child_process');
-      execSync('docker info', { stdio: 'ignore' });
-      docker = 'running';
-    } catch {
-      docker = 'installed_not_running';
-    }
-  }
+  // Check agent-runner compiled
+  const agentRunnerDist = path.join(projectRoot, 'container', 'agent-runner', 'dist', 'index.js');
+  const agentRunnerReady = fs.existsSync(agentRunnerDist);
 
   // Check existing config
   const hasEnv = fs.existsSync(path.join(projectRoot, '.env'));
@@ -70,8 +56,7 @@ export async function run(_args: string[]): Promise<void> {
     {
       platform,
       wsl,
-      appleContainer,
-      docker,
+      agentRunnerReady,
       hasEnv,
       hasAuth,
       hasRegisteredGroups,
@@ -83,8 +68,7 @@ export async function run(_args: string[]): Promise<void> {
     PLATFORM: platform,
     IS_WSL: wsl,
     IS_HEADLESS: headless,
-    APPLE_CONTAINER: appleContainer,
-    DOCKER: docker,
+    AGENT_RUNNER_READY: agentRunnerReady,
     HAS_ENV: hasEnv,
     HAS_AUTH: hasAuth,
     HAS_REGISTERED_GROUPS: hasRegisteredGroups,

@@ -96,10 +96,10 @@ describe('credentials detection', () => {
   });
 });
 
-describe('Docker detection logic', () => {
+describe('binary detection logic', () => {
   it('commandExists returns boolean', async () => {
     const { commandExists } = await import('./platform.js');
-    expect(typeof commandExists('docker')).toBe('boolean');
+    expect(typeof commandExists('node')).toBe('boolean');
     expect(typeof commandExists('nonexistent_binary_xyz')).toBe('boolean');
   });
 });

@@ -354,7 +354,7 @@ export function validateAdditionalMounts(
     if (result.allowed) {
       validatedMounts.push({
         hostPath: result.realHostPath!,
-        containerPath: `/workspace/extra/${result.resolvedContainerPath}`,
+        containerPath: `./workspace/extra/${result.resolvedContainerPath}`,
         readonly: result.effectiveReadonly!,
       });
 

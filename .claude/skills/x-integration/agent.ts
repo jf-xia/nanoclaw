@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 
 // IPC directories (inside container)
-const IPC_DIR = '/workspace/ipc';
+const IPC_DIR = './workspace/ipc';
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
 const RESULTS_DIR = path.join(IPC_DIR, 'x_results');
 

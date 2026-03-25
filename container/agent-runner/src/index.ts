@@ -47,15 +47,25 @@ interface ParsedMessage {
   content: string;
 }
 
-const IPC_INPUT_DIR = '/workspace/ipc/input';
+// Workspace paths — configurable via env vars for direct (non-container) execution.
+// Defaults retain the original container paths for backwards compatibility.
+// todo4fix: /workspace/ should be ./workspace/, and check that all file operations work correctly in direct execution mode.
+const WORKSPACE_IPC_DIR = process.env.NANOCLAW_IPC_DIR || './workspace/ipc';
+const WORKSPACE_SESSION_DIR = process.env.NANOCLAW_SESSION_DIR || './workspace/session';
+const WORKSPACE_GROUP_DIR = process.env.NANOCLAW_GROUP_DIR || './workspace/group';
+const WORKSPACE_GLOBAL_DIR = process.env.NANOCLAW_GLOBAL_DIR || './workspace/global';
+const WORKSPACE_PROJECT_DIR = process.env.NANOCLAW_PROJECT_DIR || './workspace/project';
+const WORKSPACE_EXTRA_DIR = process.env.NANOCLAW_EXTRA_DIR || './workspace/extra';
+
+const IPC_INPUT_DIR = path.join(WORKSPACE_IPC_DIR, 'input');
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
-const SESSION_CONFIG_DIR = '/workspace/session';
-const GROUP_CLAUDE_MD_PATH = '/workspace/group/CLAUDE.md';
-const GLOBAL_CLAUDE_MD_PATH = '/workspace/global/CLAUDE.md';
-const PROJECT_CLAUDE_MD_PATH = '/workspace/project/CLAUDE.md';
+const SESSION_CONFIG_DIR = WORKSPACE_SESSION_DIR;
+const GROUP_CLAUDE_MD_PATH = path.join(WORKSPACE_GROUP_DIR, 'CLAUDE.md');
+const GLOBAL_CLAUDE_MD_PATH = path.join(WORKSPACE_GLOBAL_DIR, 'CLAUDE.md');
+const PROJECT_CLAUDE_MD_PATH = path.join(WORKSPACE_PROJECT_DIR, 'CLAUDE.md');
 
 async function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -219,7 +229,7 @@ async function archiveConversation(session: CopilotSession, assistantName?: stri
 
     const summary = summarizeMessages(messages);
     const name = sanitizeFilename(summary) || generateFallbackName();
-    const conversationsDir = '/workspace/group/conversations';
+  const conversationsDir = path.join(WORKSPACE_GROUP_DIR, 'conversations');
     fs.mkdirSync(conversationsDir, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -236,7 +246,7 @@ async function archiveConversation(session: CopilotSession, assistantName?: stri
 
 function findMountedExtraDirectories(): string[] {
   const extraDirs: string[] = [];
-  const extraBase = '/workspace/extra';
+  const extraBase = WORKSPACE_EXTRA_DIR;
 
   if (!fs.existsSync(extraBase)) return extraDirs;
 
@@ -286,11 +296,11 @@ function buildCliArgs(containerInput: ContainerInput, extraDirs: string[]): stri
   const args = ['--no-auto-update'];
   const readableDirs = new Set<string>(extraDirs);
 
-  if (containerInput.isMain && fs.existsSync('/workspace/project')) {
-    readableDirs.add('/workspace/project');
+  if (containerInput.isMain && fs.existsSync(WORKSPACE_PROJECT_DIR)) {
+    readableDirs.add(WORKSPACE_PROJECT_DIR);
   }
-  if (!containerInput.isMain && fs.existsSync('/workspace/global')) {
-    readableDirs.add('/workspace/global');
+  if (!containerInput.isMain && fs.existsSync(WORKSPACE_GLOBAL_DIR)) {
+    readableDirs.add(WORKSPACE_GLOBAL_DIR);
   }
 
   for (const dir of readableDirs) {
@@ -339,7 +349,7 @@ function buildSessionConfig(
   return {
     clientName: 'nanoclaw-agent-runner',
     configDir: SESSION_CONFIG_DIR,
-    workingDirectory: '/workspace/group',
+    workingDirectory: WORKSPACE_GROUP_DIR,
     model,
     provider,
     streaming: true,
@@ -355,6 +365,7 @@ function buildSessionConfig(
           NANOCLAW_CHAT_JID: containerInput.chatJid,
           NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
           NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
+          NANOCLAW_IPC_DIR: WORKSPACE_IPC_DIR,
         },
         tools: ['*'],
       },
@@ -523,7 +534,7 @@ async function main(): Promise<void> {
   }
 
   const client = new CopilotClient({
-    cwd: '/workspace/group',
+    cwd: WORKSPACE_GROUP_DIR,
     env: sdkEnv,
     cliArgs: buildCliArgs(containerInput, extraDirs),
     logLevel: 'warning',

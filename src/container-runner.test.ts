@@ -12,13 +12,11 @@ const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
 // Mock config
 vi.mock('./config.js', () => ({
-  CONTAINER_IMAGE: 'nanoclaw-agent:latest',
   CONTAINER_MAX_OUTPUT_SIZE: 10485760,
   CONTAINER_TIMEOUT: 1800000, // 30min
   DATA_DIR: '/tmp/nanoclaw-test-data',
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
   IDLE_TIMEOUT: 1800000, // 30min
-  ONECLI_URL: 'http://localhost:10254',
   TIMEZONE: 'America/Los_Angeles',
 }));
 
@@ -32,8 +30,9 @@ vi.mock('./logger.js', () => ({
   },
 }));
 
-vi.mock('./credential-proxy.js', () => ({
-  detectAuthMode: vi.fn(() => 'api-key'),
+// Mock container-runtime
+vi.mock('./container-runtime.js', () => ({
+  getAgentRunnerPath: vi.fn(() => '/fake/agent-runner/dist/index.js'),
 }));
 
 // Mock fs
@@ -49,25 +48,14 @@ vi.mock('fs', async () => {
       readFileSync: vi.fn(() => ''),
       readdirSync: vi.fn(() => []),
       statSync: vi.fn(() => ({ isDirectory: () => false })),
-      copyFileSync: vi.fn(),
+      cpSync: vi.fn(),
     },
   };
 });
 
-// Mock mount-security
-vi.mock('./mount-security.js', () => ({
-  validateAdditionalMounts: vi.fn(() => []),
-}));
-
-// Mock OneCLI SDK
-vi.mock('@onecli-sh/sdk', () => ({
-  OneCLI: class {
-    applyContainerConfig = vi.fn().mockResolvedValue(true);
-    createAgent = vi.fn().mockResolvedValue({ id: 'test' });
-    ensureAgent = vi
-      .fn()
-      .mockResolvedValue({ name: 'test', identifier: 'test', created: true });
-  },
+// Mock env.js
+vi.mock('./env.js', () => ({
+  readEnvFile: vi.fn(() => ({})),
 }));
 
 // Create a controllable fake ChildProcess
@@ -77,12 +65,14 @@ function createFakeProcess() {
     stdout: PassThrough;
     stderr: PassThrough;
     kill: ReturnType<typeof vi.fn>;
+    killed: boolean;
     pid: number;
   };
   proc.stdin = new PassThrough();
   proc.stdout = new PassThrough();
   proc.stderr = new PassThrough();
   proc.kill = vi.fn();
+  proc.killed = false;
   proc.pid = 12345;
   return proc;
 }
@@ -96,12 +86,6 @@ vi.mock('child_process', async () => {
   return {
     ...actual,
     spawn: mockSpawn,
-    exec: vi.fn(
-      (_cmd: string, _opts: unknown, cb?: (err: Error | null) => void) => {
-        if (cb) cb(null);
-        return new EventEmitter();
-      },
-    ),
   };
 });
 
@@ -130,7 +114,7 @@ function emitOutputMarker(
   proc.stdout.push(`${OUTPUT_START_MARKER}\n${json}\n${OUTPUT_END_MARKER}\n`);
 }
 
-describe('container-runner timeout behavior', () => {
+describe('agent-runner timeout behavior', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     fakeProc = createFakeProcess();
@@ -164,7 +148,7 @@ describe('container-runner timeout behavior', () => {
     // Fire the hard timeout (IDLE_TIMEOUT + 30s = 1830000ms)
     await vi.advanceTimersByTimeAsync(1830000);
 
-    // Emit close event (as if container was stopped by the timeout)
+    // Emit close event (as if agent was stopped by the timeout)
     fakeProc.emit('close', 137);
 
     // Let the promise resolve
@@ -229,7 +213,7 @@ describe('container-runner timeout behavior', () => {
     expect(result.newSessionId).toBe('session-456');
   });
 
-  it('mounts isolated Copilot session storage and placeholder auth env', async () => {
+  it('spawns node with agent-runner path and sets workspace env vars', async () => {
     const resultPromise = runContainerAgent(
       testGroup,
       testInput,
@@ -239,11 +223,18 @@ describe('container-runner timeout behavior', () => {
 
     const spawnCall = mockSpawn.mock.calls.at(0);
     expect(spawnCall).toBeDefined();
-    const spawnArgs = spawnCall![1] as string[];
-    expect(spawnArgs).toContain('ANTHROPIC_API_KEY=placeholder');
-    expect(spawnArgs).toContain(
-      '/tmp/nanoclaw-test-data/sessions/test-group/.copilot:/workspace/session',
-    );
+    const [cmd, args, opts] = spawnCall as [string, string[], { env: NodeJS.ProcessEnv; cwd: string }];
+
+    // Spawns node, not docker
+    expect(cmd).toBe('node');
+    expect(args).toEqual(['/fake/agent-runner/dist/index.js']);
+
+    // Sets workspace env vars
+    expect(opts.env).toMatchObject({
+      NANOCLAW_IPC_DIR: expect.stringContaining('ipc'),
+      NANOCLAW_SESSION_DIR: expect.stringContaining('.copilot'),
+      NANOCLAW_GROUP_DIR: expect.any(String),
+    });
 
     fakeProc.emit('close', 0);
     await vi.advanceTimersByTimeAsync(10);
