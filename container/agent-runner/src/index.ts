@@ -518,6 +518,7 @@ async function main(): Promise<void> {
     cliArgs: buildCliArgs(containerInput, extraDirs),
     logLevel: 'warning',
     useLoggedInUser: false,
+    ...(sdkEnv.GITHUB_TOKEN ? { githubToken: sdkEnv.GITHUB_TOKEN } : {}),
   });
 
   const archivedCompactions = new Set<string>();
