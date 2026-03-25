@@ -70,7 +70,9 @@ describe('remote-control', () => {
           '-p',
           expect.any(String),
           expect.stringMatching(/^--resume=/),
-          expect.stringMatching(/^--share=\/tmp\/nanoclaw-rc-test\/remote-control-/),
+          expect.stringMatching(
+            /^--share=\/tmp\/nanoclaw-rc-test\/remote-control-/,
+          ),
           '--allow-all',
           '--add-dir',
           '/project',
@@ -163,12 +165,12 @@ describe('remote-control', () => {
         startedAt: '2026-01-01T00:00:00.000Z',
       };
 
-      readFileSyncSpy.mockImplementation((((filePath: string) => {
+      readFileSyncSpy.mockImplementation(((filePath: string) => {
         if (filePath.endsWith('remote-control.json')) {
           return JSON.stringify(session);
         }
         return '';
-      })) as any);
+      }) as any);
 
       restoreRemoteControl();
 
@@ -176,12 +178,12 @@ describe('remote-control', () => {
     });
 
     it('clears corrupted state', () => {
-      readFileSyncSpy.mockImplementation((((filePath: string) => {
+      readFileSyncSpy.mockImplementation(((filePath: string) => {
         if (filePath.endsWith('remote-control.json')) {
           return 'not json';
         }
         return '';
-      })) as any);
+      }) as any);
 
       restoreRemoteControl();
 
@@ -201,12 +203,12 @@ describe('remote-control', () => {
         startedAt: '2026-01-01T00:00:00.000Z',
       };
 
-      readFileSyncSpy.mockImplementation((((filePath: string) => {
+      readFileSyncSpy.mockImplementation(((filePath: string) => {
         if (filePath.endsWith('remote-control.json')) {
           return JSON.stringify(session);
         }
         return '';
-      })) as any);
+      }) as any);
 
       restoreRemoteControl();
       const result = await startRemoteControl('user2', 'tg:456', '/project');

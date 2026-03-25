@@ -119,11 +119,16 @@ export async function startRemoteControl(
   );
 
   if (result.error) {
-    return { ok: false, error: `Failed to start Copilot handoff: ${result.error.message}` };
+    return {
+      ok: false,
+      error: `Failed to start Copilot handoff: ${result.error.message}`,
+    };
   }
 
   if (result.status !== 0) {
-    const details = (result.stderr || result.stdout || '').trim() || `exit code ${result.status ?? 'unknown'}`;
+    const details =
+      (result.stderr || result.stdout || '').trim() ||
+      `exit code ${result.status ?? 'unknown'}`;
     return { ok: false, error: `Copilot handoff failed: ${details}` };
   }
 
