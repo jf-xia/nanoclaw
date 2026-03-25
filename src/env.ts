@@ -22,8 +22,10 @@ export function readEnvFile(keys: string[]): Record<string, string> {
   const wanted = new Set(keys);
 
   for (const line of content.split('\n')) {
-    const trimmed = line.trim();
+    let trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
+    // Strip optional `export ` prefix (common in shell-sourced .env files)
+    if (trimmed.startsWith('export ')) trimmed = trimmed.slice(7).trimStart();
     const eqIdx = trimmed.indexOf('=');
     if (eqIdx === -1) continue;
     const key = trimmed.slice(0, eqIdx).trim();
