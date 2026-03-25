@@ -215,7 +215,10 @@ async function buildContainerArgs(
     const envSecrets = readEnvFile(['GITHUB_TOKEN']);
     if (envSecrets.GITHUB_TOKEN) {
       args.push('-e', `GITHUB_TOKEN=${envSecrets.GITHUB_TOKEN}`);
-      logger.info({ containerName }, 'GitHub token injected (OneCLI not available)');
+      logger.info(
+        { containerName },
+        'GitHub token injected (OneCLI not available)',
+      );
     } else {
       logger.warn(
         { containerName },

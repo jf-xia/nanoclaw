@@ -61,13 +61,15 @@ async function connectSocket(
     process.exit(0);
   }
 
-  const { version } = await fetchLatestWaWebVersion({}).catch((err: unknown) => {
-    logger.warn(
-      { err },
-      'Failed to fetch latest WA Web version, using default',
-    );
-    return { version: undefined };
-  });
+  const { version } = await fetchLatestWaWebVersion({}).catch(
+    (err: unknown) => {
+      logger.warn(
+        { err },
+        'Failed to fetch latest WA Web version, using default',
+      );
+      return { version: undefined };
+    },
+  );
   const sock = makeWASocket({
     version,
     auth: {

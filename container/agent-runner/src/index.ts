@@ -423,7 +423,17 @@ async function createSession(
 ): Promise<CopilotSession> {
   if (sessionId) {
     log(`Resuming Copilot session ${sessionId}`);
-    return client.resumeSession(sessionId, config);
+    try {
+      return await client.resumeSession(sessionId, config);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Session may have expired or been evicted — start fresh instead of failing
+      if (msg.includes('Session not found') || msg.includes('No authentication')) {
+        log(`Session resume failed (${msg}), starting new session`);
+      } else {
+        throw err;
+      }
+    }
   }
 
   log('Creating new Copilot session');
