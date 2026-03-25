@@ -3,12 +3,14 @@
  * Containers connect here instead of directly to the Anthropic API.
  * The proxy injects real credentials so containers never see them.
  *
- * Two auth modes:
+ * Three auth modes:
  *   API key:  Proxy injects x-api-key on every request.
  *   OAuth:    Container CLI exchanges its placeholder token for a temp
  *             API key via /api/oauth/claude_cli/create_api_key.
  *             Proxy injects real OAuth token on that exchange request;
  *             subsequent requests carry the temp key which is valid as-is.
+ *   GitHub:   GITHUB_TOKEN is injected directly into the container env;
+ *             the credential proxy starts but is not used for API routing.
  */
 import { createServer, Server } from 'http';
 import { request as httpsRequest } from 'https';
@@ -17,7 +19,7 @@ import { request as httpRequest, RequestOptions } from 'http';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 
-export type AuthMode = 'api-key' | 'oauth';
+export type AuthMode = 'api-key' | 'oauth' | 'github';
 
 export interface ProxyConfig {
   authMode: AuthMode;
@@ -32,9 +34,14 @@ export function startCredentialProxy(
     'CLAUDE_CODE_OAUTH_TOKEN',
     'ANTHROPIC_AUTH_TOKEN',
     'ANTHROPIC_BASE_URL',
+    'GITHUB_TOKEN',
   ]);
 
-  const authMode: AuthMode = secrets.ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
+  const authMode: AuthMode = secrets.ANTHROPIC_API_KEY
+    ? 'api-key'
+    : secrets.CLAUDE_CODE_OAUTH_TOKEN || secrets.ANTHROPIC_AUTH_TOKEN
+      ? 'oauth'
+      : 'github';
   const oauthToken =
     secrets.CLAUDE_CODE_OAUTH_TOKEN || secrets.ANTHROPIC_AUTH_TOKEN;
 
@@ -120,6 +127,19 @@ export function startCredentialProxy(
 
 /** Detect which auth mode the host is configured for. */
 export function detectAuthMode(): AuthMode {
-  const secrets = readEnvFile(['ANTHROPIC_API_KEY']);
-  return secrets.ANTHROPIC_API_KEY ? 'api-key' : 'oauth';
+  const secrets = readEnvFile([
+    'ANTHROPIC_API_KEY',
+    'CLAUDE_CODE_OAUTH_TOKEN',
+    'ANTHROPIC_AUTH_TOKEN',
+    'GITHUB_TOKEN',
+  ]);
+  if (secrets.ANTHROPIC_API_KEY) return 'api-key';
+  if (secrets.CLAUDE_CODE_OAUTH_TOKEN || secrets.ANTHROPIC_AUTH_TOKEN) return 'oauth';
+  return 'github';
+}
+
+/** Read GITHUB_TOKEN from .env for direct container injection. */
+export function readGithubToken(): string | undefined {
+  const secrets = readEnvFile(['GITHUB_TOKEN']);
+  return secrets.GITHUB_TOKEN || undefined;
 }
