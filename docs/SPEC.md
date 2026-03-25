@@ -86,7 +86,7 @@ A personal GitHub Copilot-powered assistant with multi-channel support, persiste
 
 ## Architecture: Channel System
 
-The core ships with no channels built in — each channel (WhatsApp, Telegram, Slack, Discord, Gmail) is installed through a host workflow stored in `.claude/skills/` for historical compatibility. Channels self-register at startup; installed channels with missing credentials emit a WARN log and are skipped.
+The core ships with no channels built in — each channel (WhatsApp, Telegram, Slack, Discord, Gmail) is installed through a host workflow stored in `.copilot/skills/` for historical compatibility. Channels self-register at startup; installed channels with missing credentials emit a WARN log and are skipped.
 
 ### System Diagram
 
@@ -225,7 +225,7 @@ Channels self-register using a barrel-import pattern:
 
 ### Adding a New Channel
 
-To add a new channel, contribute a skill to `.claude/skills/add-<name>/` that:
+To add a new channel, contribute a skill to `.copilot/skills/add-<name>/` that:
 
 1. Adds a `src/channels/<name>.ts` file implementing the `Channel` interface
 2. Calls `registerChannel(name, factory)` at module load
@@ -240,7 +240,7 @@ See existing skills (`/add-whatsapp`, `/add-telegram`, `/add-slack`, `/add-disco
 
 ```
 nanoclaw/
-├── CLAUDE.md                      # Project context file (kept for compatibility; injected into Copilot system context)
+├── AGENTS.md                      # Project context file (kept for compatibility; injected into Copilot system context)
 ├── docs/
 │   ├── SPEC.md                    # This specification document
 │   ├── REQUIREMENTS.md            # Architecture decisions
@@ -283,7 +283,7 @@ nanoclaw/
 │
 ├── dist/                          # Compiled JavaScript (gitignored)
 │
-├── .claude/                       # Legacy host skill directory name (retained for compatibility)
+├── .copilot/                       # Legacy host skill directory name (retained for compatibility)
 │   └── skills/
 │       ├── setup/SKILL.md              # /setup - First-time installation
 │       ├── customize/SKILL.md          # /customize - Add capabilities
@@ -296,12 +296,12 @@ nanoclaw/
 │
 ├── groups/
 │   ├── global/
-│   │   └── CLAUDE.md              # Global memory (all groups read this)
+│   │   └── AGENTS.md              # Global memory (all groups read this)
 │   ├── main/                      # Main control channel memory
-│   │   ├── CLAUDE.md              # Main channel memory
+│   │   ├── AGENTS.md              # Main channel memory
 │   │   └── logs/                  # Task execution logs
 │   └── {group-name}/              # Per-group folders (created on registration)
-│       ├── CLAUDE.md              # Group-specific memory
+│       ├── AGENTS.md              # Group-specific memory
 │       ├── logs/                  # Task logs for this group
 │       └── *.md                   # Files created by the agent
 │
@@ -385,7 +385,7 @@ Configure authentication in a `.env` file in the project root. Two options:
 
 **Option 1: Anthropic OAuth token**
 ```bash
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+GITHUB_TOKEN=sk-ant-oat01-...
 ```
 
 **Option 2: Pay-per-use API Key**
@@ -418,14 +418,14 @@ Files with `{{PLACEHOLDER}}` values need to be configured:
 
 ## Memory System
 
-NanoClaw uses a hierarchical memory system based on `CLAUDE.md` files. The file name remains for compatibility, but the Copilot runner now loads this content explicitly and injects it into the session system message.
+NanoClaw uses a hierarchical memory system based on `AGENTS.md` files. The file name remains for compatibility, but the Copilot runner now loads this content explicitly and injects it into the session system message.
 
 ### Memory Hierarchy
 
 | Level | Location | Read By | Written By | Purpose |
 |-------|----------|---------|------------|---------|
-| **Global** | `groups/global/CLAUDE.md` | All groups | Main only | Preferences, facts, context shared across all conversations |
-| **Group** | `groups/{name}/CLAUDE.md` | That group | That group | Group-specific context, conversation memory |
+| **Global** | `groups/global/AGENTS.md` | All groups | Main only | Preferences, facts, context shared across all conversations |
+| **Group** | `groups/{name}/AGENTS.md` | That group | That group | Group-specific context, conversation memory |
 | **Files** | `groups/{name}/*.md` | That group | That group | Notes, research, documents created during conversation |
 
 ### How Memory Works
@@ -433,15 +433,15 @@ NanoClaw uses a hierarchical memory system based on `CLAUDE.md` files. The file 
 1. **Agent Context Loading**
    - Agent runs with `cwd` set to `groups/{group-name}/`
     - The Copilot runner reads:
-       - `./CLAUDE.md` (group memory)
-       - `groups/global/CLAUDE.md` for non-main groups
-       - project root `CLAUDE.md` for the main group
-       - any extra mounted `CLAUDE.md` files under `/workspace/extra/*`
+       - `./AGENTS.md` (group memory)
+       - `groups/global/AGENTS.md` for non-main groups
+       - project root `AGENTS.md` for the main group
+       - any extra mounted `AGENTS.md` files under `/workspace/extra/*`
     - The merged content is appended to the Copilot session `systemMessage`
 
 2. **Writing Memory**
-   - When user says "remember this", agent writes to `./CLAUDE.md`
-   - When user says "remember this globally" (main channel only), agent writes to `../CLAUDE.md`
+   - When user says "remember this", agent writes to `./AGENTS.md`
+   - When user says "remember this globally" (main channel only), agent writes to `../AGENTS.md`
    - Agent can create files like `notes.md`, `research.md` in the group folder
 
 3. **Main Channel Privileges**
@@ -502,7 +502,7 @@ Sessions enable conversation continuity - the Copilot runtime remembers what you
    │
    ▼
 8. Copilot processes message:
-   ├── Receives merged `CLAUDE.md` content in system context
+   ├── Receives merged `AGENTS.md` content in system context
    └── Uses tools as needed (search, email, etc.)
    │
    ▼
@@ -540,7 +540,7 @@ This allows the agent to understand the conversation context even if it wasn't m
 
 | Command | Example | Effect |
 |---------|---------|--------|
-| `@Assistant [message]` | `@Andy what's the weather?` | Talk to Claude |
+| `@Assistant [message]` | `@Andy what's the weather?` | Talk to Copilot |
 
 ### Commands Available in Main Channel Only
 
@@ -577,14 +577,14 @@ NanoClaw has a built-in scheduler that runs tasks as full agents in their group'
 ```
 User: @Andy remind me every Monday at 9am to review the weekly metrics
 
-Claude: [calls mcp__nanoclaw__schedule_task]
+Copilot: [calls mcp__nanoclaw__schedule_task]
         {
           "prompt": "Send a reminder to review weekly metrics. Be encouraging!",
           "schedule_type": "cron",
           "schedule_value": "0 9 * * 1"
         }
 
-Claude: Done! I'll remind you every Monday at 9am.
+Copilot: Done! I'll remind you every Monday at 9am.
 ```
 
 ### One-Time Tasks
@@ -592,7 +592,7 @@ Claude: Done! I'll remind you every Monday at 9am.
 ```
 User: @Andy at 5pm today, send me a summary of today's emails
 
-Claude: [calls mcp__nanoclaw__schedule_task]
+Copilot: [calls mcp__nanoclaw__schedule_task]
         {
           "prompt": "Search for today's emails, summarize the important ones, and send the summary to the group.",
           "schedule_type": "once",

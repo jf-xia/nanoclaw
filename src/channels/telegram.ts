@@ -20,7 +20,7 @@ export interface TelegramChannelOpts {
 
 /**
  * Send a message with Telegram Markdown parse mode, falling back to plain text.
- * Claude's output naturally matches Telegram's Markdown v1 format:
+ * The default NanoClaw output style naturally matches Telegram's Markdown v1 format:
  *   *bold*, _italic_, `code`, ```code blocks```, [links](url)
  */
 async function sendTelegramMessage(

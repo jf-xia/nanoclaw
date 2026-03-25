@@ -62,9 +62,7 @@ const IPC_POLL_MS = 500;
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 const SESSION_CONFIG_DIR = WORKSPACE_SESSION_DIR;
-const GROUP_CLAUDE_MD_PATH = path.join(WORKSPACE_GROUP_DIR, 'CLAUDE.md');
-const GLOBAL_CLAUDE_MD_PATH = path.join(WORKSPACE_GLOBAL_DIR, 'CLAUDE.md');
-const PROJECT_CLAUDE_MD_PATH = path.join(WORKSPACE_PROJECT_DIR, 'CLAUDE.md');
+const INSTRUCTION_FILENAMES = ['AGENTS.md'];
 
 async function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -263,18 +261,22 @@ function findMountedExtraDirectories(): string[] {
   return extraDirs;
 }
 
-function loadClaudeMarkdownContext(containerInput: ContainerInput, extraDirs: string[]): string | undefined {
+function instructionPathsFor(dir: string): string[] {
+  return INSTRUCTION_FILENAMES.map((filename) => path.join(dir, filename));
+}
+
+function loadAgentInstructions(containerInput: ContainerInput, extraDirs: string[]): string | undefined {
   const contextSections: string[] = [];
-  const candidatePaths = [GROUP_CLAUDE_MD_PATH];
+  const candidatePaths = instructionPathsFor(WORKSPACE_GROUP_DIR);
 
   if (containerInput.isMain) {
-    candidatePaths.push(PROJECT_CLAUDE_MD_PATH);
+    candidatePaths.push(...instructionPathsFor(WORKSPACE_PROJECT_DIR));
   } else {
-    candidatePaths.push(GLOBAL_CLAUDE_MD_PATH);
+    candidatePaths.push(...instructionPathsFor(WORKSPACE_GLOBAL_DIR));
   }
 
   for (const dir of extraDirs) {
-    candidatePaths.push(path.join(dir, 'CLAUDE.md'));
+    candidatePaths.push(...instructionPathsFor(dir));
   }
 
   const uniquePaths = [...new Set(candidatePaths)];
@@ -314,7 +316,7 @@ type SessionProviderConfig = NonNullable<SessionConfig['provider']>;
 function resolveProviderConfig(sdkEnv: Record<string, string | undefined>): SessionProviderConfig | undefined {
   const baseUrl = sdkEnv.ANTHROPIC_BASE_URL;
   const apiKey = sdkEnv.ANTHROPIC_API_KEY;
-  const bearerToken = sdkEnv.ANTHROPIC_AUTH_TOKEN || sdkEnv.CLAUDE_CODE_OAUTH_TOKEN;
+  const bearerToken = sdkEnv.ANTHROPIC_AUTH_TOKEN;
 
   if (!baseUrl && !apiKey && !bearerToken) {
     return undefined;
@@ -331,8 +333,9 @@ function resolveProviderConfig(sdkEnv: Record<string, string | undefined>): Sess
 function resolveModel(sdkEnv: Record<string, string | undefined>, provider: SessionProviderConfig | undefined): string | undefined {
   return sdkEnv.NANOCLAW_MODEL
     || sdkEnv.COPILOT_MODEL
+    || sdkEnv.GITHUB_MODEL
     || sdkEnv.ANTHROPIC_MODEL
-    || (provider ? 'claude-sonnet-4.5' : undefined);
+    || undefined;
 }
 
 function buildSessionConfig(
@@ -343,7 +346,7 @@ function buildSessionConfig(
 ): SessionConfig {
   const provider = resolveProviderConfig(sdkEnv);
   const model = resolveModel(sdkEnv, provider);
-  const systemMessage = loadClaudeMarkdownContext(containerInput, extraDirs);
+  const systemMessage = loadAgentInstructions(containerInput, extraDirs);
 
   return {
     clientName: 'nanoclaw-agent-runner',

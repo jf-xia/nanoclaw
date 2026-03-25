@@ -17,14 +17,14 @@ npm run format         # Prettier write
 
 ## Architecture
 
-Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Incoming messages are stored in SQLite, then routed to Claude agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
+Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Incoming messages are stored in SQLite, then routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
 
 **Message flow:**
 
 ```
 Channel → db.storeMessage() → message loop polls → GroupQueue
   → container-runner spawns local agent process
-    → Claude Code agent runs with group-scoped runtime dirs
+    → Copilot CLI agent runs with group-scoped runtime dirs
     → agent writes output with sentinel markers
   → container-runner parses output
   → router.formatOutbound() strips <internal> blocks
@@ -94,9 +94,9 @@ New features go in **skills**, not in core source. Four types:
 
 | Type | Location | When to use |
 |------|----------|-------------|
-| **Feature** | `.claude/skills/<name>/` + `skill/<name>` branch | New channel or capability |
-| **Utility** | `.claude/skills/<name>/` (self-contained) | Standalone tool (e.g., CLI) |
-| **Operational** | `.claude/skills/<name>/` (instructions only) | Workflows, guides, setup |
+| **Feature** | `.copilot/skills/<name>/` + `skill/<name>` branch | New channel or capability |
+| **Utility** | `.copilot/skills/<name>/` (self-contained) | Standalone tool (e.g., CLI) |
+| **Operational** | `.copilot/skills/<name>/` (instructions only) | Workflows, guides, setup |
 | **Runtime** | `container/skills/<name>/` | Instructions loaded inside agent at runtime |
 
 All skills use a SKILL.md with YAML frontmatter:
@@ -108,7 +108,7 @@ allowed-tools: Bash(scope:*), Read   # optional, container skills only
 ---
 ```
 
-Keep SKILL.md under 500 lines. Put code in separate files, reference via `${CLAUDE_SKILL_DIR}`.
+Keep SKILL.md under 500 lines. Put code in separate files, reference via `${COPILOT_WORKFLOW_DIR}`.
 
 ## Config & Secrets
 
@@ -118,7 +118,7 @@ Key env vars: `ASSISTANT_NAME` (trigger prefix), `CONTAINER_TIMEOUT`, `MAX_CONCU
 
 ## Testing
 
-Vitest. Tests live alongside source as `*.test.ts`. Use `_initTestDatabase()` from `src/db.ts` for an in-memory SQLite instance in tests. Skill tests have a separate config (`vitest.skills.config.ts`) and live in `.claude/skills/**/tests/`.
+Vitest. Tests live alongside source as `*.test.ts`. Use `_initTestDatabase()` from `src/db.ts` for an in-memory SQLite instance in tests. Skill tests have a separate config (`vitest.skills.config.ts`) and live in `.copilot/skills/**/tests/`.
 
 ## PR Guidelines
 

@@ -8,16 +8,16 @@ NanoClaw has four types of skills overall. See [CONTRIBUTING.md](../CONTRIBUTING
 
 | Type | Location | How it works |
 |------|----------|-------------|
-| **Feature** (this doc) | `.claude/skills/` + `skill/*` branch | SKILL.md has instructions; code lives on a branch, applied via `git merge` |
-| **Utility** | `.claude/skills/<name>/` with code files | Self-contained tools; code in skill directory, copied into place on install |
-| **Operational** | `.claude/skills/` on `main` | Instruction-only workflows (setup, debug, update) |
+| **Feature** (this doc) | `.copilot/skills/` + `skill/*` branch | SKILL.md has instructions; code lives on a branch, applied via `git merge` |
+| **Utility** | `.copilot/skills/<name>/` with code files | Self-contained tools; code in skill directory, copied into place on install |
+| **Operational** | `.copilot/skills/` on `main` | Instruction-only workflows (setup, debug, update) |
 | **Runtime** | `container/skills/` | Loaded inside local agent sessions at runtime |
 
 ---
 
 Feature skills are distributed as git branches on the upstream repository. Applying a skill is a `git merge`. Updating core is a `git merge`. Everything is standard git.
 
-This replaces the previous `skills-engine/` system (three-way file merging, `.nanoclaw/` state, manifest files, replay, backup/restore) with plain git operations and Claude for conflict resolution.
+This replaces the previous `skills-engine/` system (three-way file merging, `.nanoclaw/` state, manifest files, replay, backup/restore) with plain git operations and Copilot for conflict resolution.
 
 ## How It Works
 
@@ -41,7 +41,7 @@ Skills are split into two categories:
 **Operational skills** (on `main`, always available):
 - `/setup`, `/debug`, `/update-nanoclaw`, `/customize`, `/update-skills`
 - These are instruction-only SKILL.md files — no code changes, just workflows
-- Live in `.claude/skills/` on `main`, immediately available to every user
+- Live in `.copilot/skills/` on `main`, immediately available to every user
 
 **Feature skills** (in marketplace, installed on demand):
 - `/add-discord`, `/add-telegram`, `/add-slack`, `/add-gmail`, etc.
@@ -51,18 +51,18 @@ Skills are split into two categories:
 Users never interact with the marketplace directly. The operational skills `/setup` and `/customize` handle plugin installation transparently:
 
 ```bash
-# Claude runs this behind the scenes — users don't see it
-claude plugin install nanoclaw-skills@nanoclaw-skills --scope project
+# Copilot runs this behind the scenes — users don't see it
+copilot plugin install nanoclaw-skills@nanoclaw-skills --scope project
 ```
 
-Skills are hot-loaded after `claude plugin install` — no restart needed. This means `/setup` can install the marketplace plugin, then immediately run any feature skill, all in one session.
+Skills are hot-loaded after `copilot plugin install` — no restart needed. This means `/setup` can install the marketplace plugin, then immediately run any feature skill, all in one session.
 
 ### Selective skill installation
 
 `/setup` asks users what channels they want, then only offers relevant skills:
 
 1. "Which messaging channels do you want to use?" → Discord, Telegram, Slack, WhatsApp
-2. User picks Telegram → Claude installs the plugin and runs `/add-telegram`
+2. User picks Telegram → Copilot installs the plugin and runs `/add-telegram`
 3. After Telegram is set up: "Want to add Agent Swarm support for Telegram?" → offers `/add-telegram-swarm`
 4. "Want to enable community skills?" → installs community marketplace plugins
 
@@ -70,7 +70,7 @@ Dependent skills (e.g., `telegram-swarm` depends on `telegram`) are only offered
 
 ### Marketplace configuration
 
-NanoClaw's `.claude/settings.json` registers the official marketplace:
+NanoClaw's `.copilot/settings.json` registers the official marketplace:
 
 ```json
 {
@@ -85,15 +85,15 @@ NanoClaw's `.claude/settings.json` registers the official marketplace:
 }
 ```
 
-The marketplace repo uses Claude Code's plugin structure:
+The marketplace repo uses Copilot CLI's plugin structure:
 
 ```
 qwibitai/nanoclaw-skills/
-  .claude-plugin/
+  .copilot-plugin/
     marketplace.json              # Plugin catalog
   plugins/
     nanoclaw-skills/              # Single plugin bundling all official skills
-      .claude-plugin/
+      .copilot-plugin/
         plugin.json               # Plugin manifest
       skills/
         add-discord/
@@ -107,11 +107,11 @@ qwibitai/nanoclaw-skills/
 
 Multiple skills are bundled in one plugin — installing `nanoclaw-skills` makes all feature skills available at once. Individual skills don't need separate installation.
 
-Each SKILL.md tells Claude to merge the corresponding skill branch as step 1, then walks through interactive setup (env vars, bot creation, etc.).
+Each SKILL.md tells Copilot to merge the corresponding skill branch as step 1, then walks through interactive setup (env vars, bot creation, etc.).
 
 ### Applying a skill
 
-User runs `/add-discord` (discovered via marketplace). Claude follows the SKILL.md:
+User runs `/add-discord` (discovered via marketplace). Copilot follows the SKILL.md:
 
 1. `git fetch upstream skill/discord`
 2. `git merge upstream/skill/discord`
@@ -131,7 +131,7 @@ git merge upstream/skill/discord
 git merge upstream/skill/telegram
 ```
 
-Git handles the composition. If both skills modify the same lines, it's a real conflict and Claude resolves it.
+Git handles the composition. If both skills modify the same lines, it's a real conflict and Copilot resolves it.
 
 ### Updating core
 
@@ -166,7 +166,7 @@ This logic is available in two ways:
 
 ### Conflict resolution
 
-At any merge step, conflicts may arise. Claude resolves them — reading the conflicted files, understanding the intent of both sides, and producing the correct result. This is what makes the branch approach viable at scale: conflict resolution that previously required human judgment is now automated.
+At any merge step, conflicts may arise. Copilot resolves them — reading the conflicted files, understanding the intent of both sides, and producing the correct result. This is what makes the branch approach viable at scale: conflict resolution that previously required human judgment is now automated.
 
 ### Skill dependencies
 
@@ -186,11 +186,11 @@ git log --merges --oneline | grep discord
 git revert -m 1 <merge-commit>
 ```
 
-This creates a new commit that undoes the skill's changes. Claude can handle the whole flow.
+This creates a new commit that undoes the skill's changes. Copilot can handle the whole flow.
 
-If the user has modified the skill's code since merging (custom changes on top), the revert might conflict — Claude resolves it.
+If the user has modified the skill's code since merging (custom changes on top), the revert might conflict — Copilot resolves it.
 
-If the user later wants to re-apply the skill, they need to revert the revert first (git treats reverted changes as "already applied and undone"). Claude handles this too.
+If the user later wants to re-apply the skill, they need to revert the revert first (git treats reverted changes as "already applied and undone"). Copilot handles this too.
 
 ## CI: Keeping Skill Branches Current
 
@@ -207,7 +207,7 @@ A GitHub Action runs on every push to `main`:
 - Users can re-merge a skill branch to pick up skill updates (bug fixes, improvements)
 - Git has proper common ancestors throughout the merge graph
 
-**Why this scales:** With a few hundred skills and a few commits to main per day, the CI cost is trivial. Haiku is fast and cheap. The approach that wouldn't have been feasible a year or two ago is now practical because Claude can resolve conflicts at scale.
+**Why this scales:** With a few hundred skills and a few commits to main per day, the CI cost is trivial. Haiku is fast and cheap. The approach that wouldn't have been feasible a year or two ago is now practical because Copilot can resolve conflicts at scale.
 
 ## Installation Flow
 
@@ -219,11 +219,11 @@ A GitHub Action runs on every push to `main`:
    git clone https://github.com/<you>/nanoclaw.git
    cd nanoclaw
    ```
-3. Run Claude Code:
+3. Run Copilot CLI:
    ```bash
-   claude
+   copilot
    ```
-4. Run `/setup` — Claude handles dependencies, authentication, container setup, service configuration, and adds `upstream` remote if not present
+4. Run `/setup` — Copilot handles dependencies, authentication, container setup, service configuration, and adds `upstream` remote if not present
 
 Forking is recommended because it gives users a remote to push their customizations to. Clone-only works for trying things out but provides no remote backup.
 
@@ -251,14 +251,14 @@ Users who previously applied skills via the `skills-engine/` system have skill c
 
 **Option A: Per-skill reapply (keep your fork)**
 1. For each old-engine skill: identify and revert the old changes, then merge the skill branch fresh
-2. Claude assists with identifying what to revert and resolving any conflicts
+2. Copilot assists with identifying what to revert and resolving any conflicts
 3. Custom modifications (non-skill changes) are preserved
 
 **Option B: Fresh start (cleanest)**
 1. Create a new fork from upstream
 2. Merge the skill branches you want
 3. Manually re-apply your custom (non-skill) changes
-4. Claude assists by diffing your old fork against the new one to identify custom changes
+4. Copilot assists by diffing your old fork against the new one to identify custom changes
 
 In both cases:
 - Delete the `.nanoclaw/` directory (no longer needed)
@@ -282,7 +282,7 @@ Custom changes, skills, and core updates all coexist on their main branch. Git h
 
 ### Applying a skill
 
-Run `/add-discord` in Claude Code (discovered via the marketplace plugin), or manually:
+Run `/add-discord` in Copilot CLI (discovered via the marketplace plugin), or manually:
 
 ```bash
 git fetch upstream skill/discord
@@ -305,7 +305,7 @@ This is the same as the existing `/update-nanoclaw` skill's merge path.
 
 ### Updating skills
 
-Run `/update-skills` or let `/update-nanoclaw` check after a core update. For each previously-merged skill branch that has new commits, Claude offers to merge the updates.
+Run `/update-skills` or let `/update-nanoclaw` check after a core update. For each previously-merged skill branch that has new commits, Copilot offers to merge the updates.
 
 ### Contributing back to upstream
 
@@ -323,7 +323,7 @@ Standard fork contribution workflow. Their custom changes stay on their main and
 
 ## Contributing a Skill
 
-The flow below is for **feature skills** (branch-based). For utility skills (self-contained tools) and container skills, the contributor opens a PR that adds files directly to `.claude/skills/<name>/` or `container/skills/<name>/` — no branch extraction needed. See [CONTRIBUTING.md](../CONTRIBUTING.md) for all skill types.
+The flow below is for **feature skills** (branch-based). For utility skills (self-contained tools) and container skills, the contributor opens a PR that adds files directly to `.copilot/skills/<name>/` or `container/skills/<name>/` — no branch extraction needed. See [CONTRIBUTING.md](../CONTRIBUTING.md) for all skill types.
 
 ### Contributor flow (feature skills)
 
@@ -376,11 +376,11 @@ A community contributor:
 
 1. Maintains a fork of NanoClaw (e.g., `alice/nanoclaw`)
 2. Creates `skill/*` branches on their fork with their custom skills
-3. Creates a marketplace repo (e.g., `alice/nanoclaw-skills`) with a `.claude-plugin/marketplace.json` and plugin structure
+3. Creates a marketplace repo (e.g., `alice/nanoclaw-skills`) with a `.copilot-plugin/marketplace.json` and plugin structure
 
 ### Adding a community marketplace
 
-If the community contributor is trusted, they can open a PR to add their marketplace to NanoClaw's `.claude/settings.json`:
+If the community contributor is trusted, they can open a PR to add their marketplace to NanoClaw's `.copilot/settings.json`:
 
 ```json
 {
@@ -405,10 +405,10 @@ Once merged, all NanoClaw users automatically discover the community marketplace
 
 ### Installing community skills
 
-`/setup` and `/customize` ask users whether they want to enable community skills. If yes, Claude installs community marketplace plugins via `claude plugin install`:
+`/setup` and `/customize` ask users whether they want to enable community skills. If yes, Copilot installs community marketplace plugins via `copilot plugin install`:
 
 ```bash
-claude plugin install alice-skills@alice-nanoclaw-skills --scope project
+copilot plugin install alice-skills@alice-nanoclaw-skills --scope project
 ```
 
 Community skills are hot-loaded and immediately available — no restart needed. Dependent skills are only offered after their prerequisites are met (e.g., community Telegram add-ons only after Telegram is installed).
@@ -529,7 +529,7 @@ Migration from the old skills engine to branches is complete. All feature skills
 - All `add/`, `modify/`, `tests/`, and `manifest.yaml` from skill directories
 - `.nanoclaw/` state directory
 
-Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.claude/skills/`.
+Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.copilot/skills/`.
 
 ## What Changes
 
@@ -539,7 +539,7 @@ Before:
 ```bash
 git clone https://github.com/qwibitai/NanoClaw.git
 cd NanoClaw
-claude
+copilot
 ```
 
 After:
@@ -547,7 +547,7 @@ After:
 1. Fork qwibitai/nanoclaw on GitHub
 2. git clone https://github.com/<you>/nanoclaw.git
 3. cd nanoclaw
-4. claude
+4. copilot
 5. /setup
 ```
 
@@ -557,12 +557,12 @@ Updates to the setup flow:
 
 - Check if `upstream` remote exists; if not, add it: `git remote add upstream https://github.com/qwibitai/nanoclaw.git`
 - Check if `origin` points to the user's fork (not qwibitai). If it points to qwibitai, guide them through the fork migration.
-- **Install marketplace plugin:** `claude plugin install nanoclaw-skills@nanoclaw-skills --scope project` — makes all feature skills available (hot-loaded, no restart)
+- **Install marketplace plugin:** `copilot plugin install nanoclaw-skills@nanoclaw-skills --scope project` — makes all feature skills available (hot-loaded, no restart)
 - **Ask which channels to add:** present channel options (Discord, Telegram, Slack, WhatsApp, Gmail), run corresponding `/add-*` skills for selected channels
 - **Offer dependent skills:** after a channel is set up, offer relevant add-ons (e.g., Agent Swarm after Telegram, voice transcription after WhatsApp)
 - **Optionally enable community marketplaces:** ask if the user wants community skills, install those marketplace plugins too
 
-### `.claude/settings.json`
+### `.copilot/settings.json`
 
 Marketplace configuration so the official marketplace is auto-registered:
 
@@ -581,7 +581,7 @@ Marketplace configuration so the official marketplace is auto-registered:
 
 ### Skills directory on main
 
-The `.claude/skills/` directory on `main` retains only operational skills (setup, debug, update-nanoclaw, customize, update-skills). Feature skills (add-discord, add-telegram, etc.) live in the marketplace repo, installed via `claude plugin install` during `/setup` or `/customize`.
+The `.copilot/skills/` directory on `main` retains only operational skills (setup, debug, update-nanoclaw, customize, update-skills). Feature skills (add-discord, add-telegram, etc.) live in the marketplace repo, installed via `copilot plugin install` during `/setup` or `/customize`.
 
 ### Skills engine removal
 
@@ -594,14 +594,14 @@ The following can be removed:
 - `scripts/validate-all-skills.ts`
 - `.nanoclaw/` — state directory
 - `add/` and `modify/` subdirectories from all skill directories
-- Feature skill SKILL.md files from `.claude/skills/` on main (they now live in the marketplace)
+- Feature skill SKILL.md files from `.copilot/skills/` on main (they now live in the marketplace)
 
-Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.claude/skills/`.
+Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.copilot/skills/`.
 
 ### New infrastructure
 
-- **Marketplace repo** (`qwibitai/nanoclaw-skills`) — single Claude Code plugin bundling SKILL.md files for all feature skills
-- **CI GitHub Action** — merge-forward `main` into all `skill/*` branches on every push to `main`, using Claude (Haiku) for conflict resolution
+- **Marketplace repo** (`qwibitai/nanoclaw-skills`) — single Copilot CLI plugin bundling SKILL.md files for all feature skills
+- **CI GitHub Action** — merge-forward `main` into all `skill/*` branches on every push to `main`, using Copilot (Haiku) for conflict resolution
 - **`/update-skills` skill** — checks for and applies skill branch updates using git history
 - **`CONTRIBUTORS.md`** — tracks skill contributors
 
@@ -660,7 +660,7 @@ Users only need to re-merge a skill branch if the skill itself was updated (not 
 >
 > **If you previously applied skills via the old system**, your code changes are already in your working tree — nothing to redo. You can delete the `.nanoclaw/` directory. Future skills and updates use the branch-based approach.
 >
-> **Discovering skills:** Skills are now available through Claude Code's plugin marketplace. Run `/plugin` in Claude Code to browse and install available skills.
+> **Discovering skills:** Skills are now available through Copilot CLI's plugin marketplace. Run `/plugin` in Copilot CLI to browse and install available skills.
 
 ### For skill contributors
 
@@ -671,6 +671,6 @@ Users only need to re-merge a skill branch if the skill itself was updated (not 
 > 2. Branch from `main` and make your code changes
 > 3. Open a regular PR
 >
-> That's it. We'll create a `skill/<name>` branch from your PR, add you to CONTRIBUTORS.md, and add the SKILL.md to the marketplace. CI automatically keeps skill branches merged-forward with `main` using Claude to resolve any conflicts.
+> That's it. We'll create a `skill/<name>` branch from your PR, add you to CONTRIBUTORS.md, and add the SKILL.md to the marketplace. CI automatically keeps skill branches merged-forward with `main` using Copilot to resolve any conflicts.
 >
 > **Want to run your own skill marketplace?** Maintain skill branches on your fork and create a marketplace repo. Open a PR to add it to NanoClaw's auto-discovered marketplaces — or users can add it manually via `/plugin marketplace add`.

@@ -32,9 +32,9 @@ No configuration sprawl. If you want different behavior, modify the code. The co
 
 ### AI-Native Development
 
-I don't need an installation wizard - Claude Code guides the setup. I don't need a monitoring dashboard - I ask Claude Code what's happening. I don't need elaborate logging UIs - I ask Claude to read the logs. I don't need debugging tools - I describe the problem and Claude fixes it.
+I don't need an installation wizard - Copilot CLI guides the setup. I don't need a monitoring dashboard - I ask Copilot CLI what's happening. I don't need elaborate logging UIs - I ask Copilot to read the logs. I don't need debugging tools - I describe the problem and Copilot fixes it.
 
-The codebase assumes you have an AI collaborator. It doesn't need to be excessively self-documenting or self-debugging because Claude is always there.
+The codebase assumes you have an AI collaborator. It doesn't need to be excessively self-documenting or self-debugging because Copilot is always there.
 
 ### Skills Over Features
 
@@ -62,21 +62,21 @@ Skills to add or switch to different messaging platforms:
 
 ## Vision
 
-A personal Claude assistant accessible via WhatsApp, with minimal custom code.
+A personal Copilot assistant accessible via WhatsApp, with minimal custom code.
 
 **Core components:**
-- **Claude Agent SDK** as the core agent
+- **GitHub Copilot SDK** as the core agent
 - **Local agent runner** for agent execution
 - **WhatsApp** as the primary I/O channel
 - **Persistent memory** per conversation and globally
-- **Scheduled tasks** that run Claude and can message back
+- **Scheduled tasks** that run Copilot and can message back
 - **Web access** for search and browsing
 - **Browser automation** via agent-browser
 
 **Implementation approach:**
-- Use existing tools (WhatsApp connector, Claude Agent SDK, MCP servers)
+- Use existing tools (WhatsApp connector, GitHub Copilot SDK, MCP servers)
 - Minimal glue code
-- File-based systems where possible (CLAUDE.md for memory, folders for groups)
+- File-based systems where possible (AGENTS.md for memory, folders for groups)
 
 ---
 
@@ -89,13 +89,13 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Unregistered groups are ignored completely
 
 ### Memory System
-- **Per-group memory**: Each group has a folder with its own `CLAUDE.md`
-- **Global memory**: Root `CLAUDE.md` is read by all groups, but only writable from "main" (self-chat)
+- **Per-group memory**: Each group has a folder with its own `AGENTS.md`
+- **Global memory**: Root `AGENTS.md` is read by all groups, but only writable from "main" (self-chat)
 - **Files**: Groups can create/read files in their folder and reference them
-- Agent runs in the group's folder, automatically inherits both CLAUDE.md files
+- Agent runs in the group's folder, automatically inherits both AGENTS.md files
 
 ### Session Management
-- Each group maintains a conversation session (via Claude Agent SDK)
+- Each group maintains a conversation session (via GitHub Copilot SDK)
 - Sessions auto-compact when context gets too long, preserving critical information
 
 ### Native Agent Execution
@@ -106,7 +106,7 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Browser automation depends on locally available browser tooling
 
 ### Scheduled Tasks
-- Users can ask Claude to schedule recurring or one-time tasks from any group
+- Users can ask Copilot to schedule recurring or one-time tasks from any group
 - Tasks run as full agents in the context of the group that created them
 - Tasks have access to all tools including Bash, which now runs on the host
 - Tasks can optionally send messages to their group via `send_message` tool, or complete silently
@@ -123,7 +123,7 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 ### Main Channel Privileges
 - Main channel is the admin/control group (typically self-chat)
-- Can write to global memory (`groups/CLAUDE.md`)
+- Can write to global memory (`groups/AGENTS.md`)
 - Can schedule tasks for any group
 - Can view and manage tasks from all groups
 - Can configure additional directory mounts for any group
@@ -143,11 +143,11 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Tools: `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `send_message`
 - Tasks stored in SQLite with run history
 - Scheduler loop checks for due tasks every minute
-- Tasks execute Claude Agent SDK in the group's local runtime context
+- Tasks execute GitHub Copilot SDK in the group's local runtime context
 
 ### Web Access
 - Built-in WebSearch and WebFetch tools
-- Standard Claude Agent SDK capabilities
+- Standard GitHub Copilot SDK capabilities
 
 ### Browser Automation
 - agent-browser CLI with locally available Chromium
@@ -161,8 +161,8 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 ### Philosophy
 - Minimal configuration files
-- Setup and customization done via Claude Code
-- Users clone the repo and run Claude Code to configure
+- Setup and customization done via Copilot CLI
+- Users clone the repo and run Copilot CLI to configure
 - Each user gets a custom setup matching their exact needs
 
 ### Skills
@@ -182,7 +182,7 @@ These are the creator's settings, stored here for reference:
 
 - **Trigger**: `@Andy` (case insensitive)
 - **Response prefix**: `Andy:`
-- **Persona**: Default Claude (no custom personality)
+- **Persona**: Default Copilot (no custom personality)
 - **Main channel**: Self-chat (messaging yourself in WhatsApp)
 
 ---

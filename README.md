@@ -27,7 +27,7 @@ NanoClaw provides that same core functionality, but in a codebase small enough t
 ```bash
 gh repo fork qwibitai/nanoclaw --clone
 cd nanoclaw
-claude
+copilot
 ```
 
 <details>
@@ -36,39 +36,39 @@ claude
 1. Fork [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) on GitHub (click the Fork button)
 2. `git clone https://github.com/<your-username>/nanoclaw.git`
 3. `cd nanoclaw`
-4. `claude`
+4. `copilot`
 
 </details>
 
-Then run `/setup`. Claude Code handles everything: dependencies, authentication, local agent-runner build, and service configuration.
+Then run `/setup`. Copilot CLI handles dependencies, authentication, local agent-runner build, and service configuration.
 
-> **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are [Claude Code skills](https://code.claude.com/docs/en/skills). Type them inside the `claude` CLI prompt, not in your regular terminal. If you don't have Claude Code installed, get it at [claude.com/product/claude-code](https://claude.com/product/claude-code).
+> **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are NanoClaw workflow prompts intended to be run inside a `copilot` CLI session. See [docs/COPILOT_CLI_MIGRATION.md](docs/COPILOT_CLI_MIGRATION.md) for the updated workflow model.
 
 ## Philosophy
 
-**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask Claude Code to walk you through it.
+**Small enough to understand.** One process, a few source files and no microservices. If you want to understand the full NanoClaw codebase, just ask Copilot CLI to walk you through it.
 
 **Scoped by design.** Agents run locally, but each group gets its own working directory, session state, and mount policy. This is a native runtime, not an OS sandbox, so trust and code review still matter.
 
-**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have Claude Code modify it to match your needs.
+**Built for the individual user.** NanoClaw isn't a monolithic framework; it's software that fits each user's exact needs. Instead of becoming bloatware, NanoClaw is designed to be bespoke. You make your own fork and have Copilot CLI modify it to match your needs.
 
 **Customization = code changes.** No configuration sprawl. Want different behavior? Modify the code. The codebase is small enough that it's safe to make changes.
 
 **AI-native.**
-- No installation wizard; Claude Code guides setup.
-- No monitoring dashboard; ask Claude what's happening.
-- No debugging tools; describe the problem and Claude fixes it.
+- No installation wizard; Copilot CLI guides setup.
+- No monitoring dashboard; ask Copilot what's happening.
+- No debugging tools; describe the problem and Copilot fixes it.
 
-**Skills over features.** Instead of adding features (e.g. support for Telegram) to the codebase, contributors submit [claude code skills](https://code.claude.com/docs/en/skills) like `/add-telegram` that transform your fork. You end up with clean code that does exactly what you need.
+**Workflows over bundled features.** Instead of adding every possible integration to core, contributors provide focused workflow docs and branch-based add-ons like `/add-telegram`. You end up with clean code that does exactly what you need.
 
-**Best harness, best model.** NanoClaw runs on the Claude Agent SDK, which means you're running Claude Code directly. Claude Code is highly capable and its coding and problem-solving capabilities allow it to modify and expand NanoClaw and tailor it to each user.
+**Best harness, best model.** NanoClaw runs on the GitHub Copilot SDK, which means you're running Copilot CLI directly. Copilot CLI is highly capable and its coding and problem-solving capabilities allow it to modify and expand NanoClaw and tailor it to each user.
 
 ## What It Supports
 
-- **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
-- **Scoped group context** - Each group has its own `CLAUDE.md` memory, working directory, and isolated Copilot session state.
+- **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with workflows like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
+- **Scoped group context** - Each group has its own `AGENTS.md` memory, working directory, and isolated Copilot session state.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
-- **Scheduled tasks** - Recurring jobs that run Claude and can message you back
+- **Scheduled tasks** - Recurring jobs that run Copilot and can message you back
 - **Web access** - Search and fetch content from the Web
 - **Native runtime** - Agents execute as local streaming child processes, which keeps startup fast and deployment simple.
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
@@ -93,7 +93,7 @@ From the main channel (your self-chat), you can manage groups and tasks:
 
 ## Customizing
 
-NanoClaw doesn't use configuration files. To make changes, just tell Claude Code what you want:
+NanoClaw doesn't use configuration files. To make changes, just tell Copilot CLI what you want:
 
 - "Change the trigger word to @Bob"
 - "Remember in the future to make responses shorter and more direct"
@@ -102,17 +102,17 @@ NanoClaw doesn't use configuration files. To make changes, just tell Claude Code
 
 Or run `/customize` for guided changes.
 
-The codebase is small enough that Claude can safely modify it.
+The codebase is small enough that Copilot can safely modify it.
 
 ## Contributing
 
-**Don't add features. Add skills.**
+**Don't add features. Add workflows.**
 
 If you want to add Telegram support, don't create a PR that adds Telegram to the core codebase. Instead, fork NanoClaw, make the code changes on a branch, and open a PR. We'll create a `skill/telegram` branch from your PR that other users can merge into their fork.
 
 Users then run `/add-telegram` on their fork and get clean code that does exactly what they need, not a bloated system trying to support every use case.
 
-### RFS (Request for Skills)
+### RFS (Request for Workflows)
 
 Skills we'd like to see:
 
@@ -123,12 +123,12 @@ Skills we'd like to see:
 
 - macOS or Linux
 - Node.js 20+
-- [Claude Code](https://claude.ai/download)
+- [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli)
 
 ## Architecture
 
 ```
-Channels --> SQLite --> Polling loop --> Local Agent Runner (Claude Agent SDK) --> Response
+Channels --> SQLite --> Polling loop --> Local Agent Runner (GitHub Copilot SDK) --> Response
 ```
 
 Single Node.js process. Channels are added via skills and self-register at startup — the orchestrator connects whichever ones have credentials present. Agents execute as local child processes. Per-group message queue with concurrency control. IPC via filesystem.
@@ -144,7 +144,7 @@ Key files:
 - `src/container-runner.ts` - Spawns streaming local agent processes
 - `src/task-scheduler.ts` - Runs scheduled tasks
 - `src/db.ts` - SQLite operations (messages, groups, sessions, state)
-- `groups/*/CLAUDE.md` - Per-group memory
+- `groups/*/AGENTS.md` - Per-group memory
 
 ## FAQ
 
@@ -162,11 +162,11 @@ It is safer than a sprawling multi-process system, but it is not an OS sandbox. 
 
 **Why no configuration files?**
 
-We don't want configuration sprawl. Every user should customize NanoClaw so that the code does exactly what they want, rather than configuring a generic system. If you prefer having config files, you can tell Claude to add them.
+We don't want configuration sprawl. Every user should customize NanoClaw so that the code does exactly what they want, rather than configuring a generic system. If you prefer having config files, you can tell Copilot to add them.
 
 **Can I use third-party or open-source models?**
 
-Yes. NanoClaw supports any Claude API-compatible model endpoint. Set these environment variables in your `.env` file:
+Yes. NanoClaw supports Anthropic-compatible endpoints and proxy-backed local models. Set these environment variables in your `.env` file:
 
 ```bash
 ANTHROPIC_BASE_URL=https://your-api-endpoint.com
@@ -182,11 +182,15 @@ Note: The model must support the Anthropic API format for best compatibility.
 
 **How do I debug issues?**
 
-Ask Claude Code. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
+Ask Copilot CLI. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
 
 **Why isn't the setup working for me?**
 
-If you have issues, during setup, Claude will try to dynamically fix them. If that doesn't work, run `claude`, then run `/debug`. If Claude finds an issue that is likely affecting other users, open a PR to modify the setup SKILL.md.
+If you have issues, during setup, Copilot will try to dynamically fix them. If that doesn't work, run `copilot`, then run `/debug`. If the issue affects other users, open a PR updating the relevant workflow document.
+
+**Where is the migration guide?**
+
+See [docs/COPILOT_CLI_MIGRATION.md](docs/COPILOT_CLI_MIGRATION.md) for the breaking changes, the new `AGENTS.md` memory model, Copilot CLI usage, and follow-up optimization ideas.
 
 **What changes will be accepted into the codebase?**
 

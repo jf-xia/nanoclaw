@@ -25,7 +25,7 @@ npm install
 npx tsx setup/index.ts --step environment
 ```
 
-Or start `claude` and run `/setup` for the guided flow.
+Or start `copilot` and run `/setup` for the guided flow.
 
 ### Rebuild after runtime changes
 

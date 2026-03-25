@@ -116,7 +116,7 @@ export async function run(args: string[]): Promise<void> {
     recursive: true,
   });
 
-  // Update assistant name in CLAUDE.md files if different from default
+  // Update assistant name in AGENTS.md files if different from default
   let nameUpdated = false;
   if (parsed.assistantName !== 'Andy') {
     logger.info(
@@ -125,8 +125,8 @@ export async function run(args: string[]): Promise<void> {
     );
 
     const mdFiles = [
-      path.join(projectRoot, 'groups', 'global', 'CLAUDE.md'),
-      path.join(projectRoot, 'groups', parsed.folder, 'CLAUDE.md'),
+      path.join(projectRoot, 'groups', 'global', 'AGENTS.md'),
+      path.join(projectRoot, 'groups', parsed.folder, 'AGENTS.md'),
     ];
 
     for (const mdFile of mdFiles) {
@@ -138,7 +138,7 @@ export async function run(args: string[]): Promise<void> {
           `You are ${parsed.assistantName}`,
         );
         fs.writeFileSync(mdFile, content);
-        logger.info({ file: mdFile }, 'Updated CLAUDE.md');
+        logger.info({ file: mdFile }, 'Updated AGENTS.md');
       }
     }
 

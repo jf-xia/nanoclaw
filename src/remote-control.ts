@@ -1,4 +1,5 @@
-import { spawn } from 'child_process';
+import { spawnSync } from 'child_process';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -6,8 +7,11 @@ import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 
 interface RemoteControlSession {
-  pid: number;
-  url: string;
+  sessionId: string;
+  sharePath: string;
+  resumeCommand: string;
+  handoffMessage: string;
+  cwd: string;
   startedBy: string;
   startedInChat: string;
   startedAt: string;
@@ -15,12 +19,13 @@ interface RemoteControlSession {
 
 let activeSession: RemoteControlSession | null = null;
 
-const URL_REGEX = /https:\/\/claude\.ai\/code\S+/;
 const URL_TIMEOUT_MS = 30_000;
-const URL_POLL_MS = 200;
 const STATE_FILE = path.join(DATA_DIR, 'remote-control.json');
-const STDOUT_FILE = path.join(DATA_DIR, 'remote-control.stdout');
-const STDERR_FILE = path.join(DATA_DIR, 'remote-control.stderr');
+const REMOTE_PROMPT = [
+  'Prepare a NanoClaw maintenance handoff for a local operator.',
+  'Summarize the current repository context and next likely debugging steps in under 120 words.',
+  'Do not ask questions.',
+].join(' ');
 
 function saveState(session: RemoteControlSession): void {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
@@ -32,15 +37,6 @@ function clearState(): void {
     fs.unlinkSync(STATE_FILE);
   } catch {
     // ignore
-  }
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -58,11 +54,11 @@ export function restoreRemoteControl(): void {
 
   try {
     const session: RemoteControlSession = JSON.parse(data);
-    if (session.pid && isProcessAlive(session.pid)) {
+    if (session.sessionId && session.resumeCommand) {
       activeSession = session;
       logger.info(
-        { pid: session.pid, url: session.url },
-        'Restored Remote Control session from previous run',
+        { sessionId: session.sessionId, sharePath: session.sharePath },
+        'Restored Copilot handoff session from previous run',
       );
     } else {
       clearState();
@@ -92,114 +88,69 @@ export async function startRemoteControl(
   cwd: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   if (activeSession) {
-    // Verify the process is still alive
-    if (isProcessAlive(activeSession.pid)) {
-      return { ok: true, url: activeSession.url };
-    }
-    // Process died — clean up and start a new one
-    activeSession = null;
-    clearState();
+    return { ok: true, url: activeSession.handoffMessage };
   }
 
-  // Redirect stdout/stderr to files so the process has no pipes to the parent.
-  // This prevents SIGPIPE when NanoClaw restarts.
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  const stdoutFd = fs.openSync(STDOUT_FILE, 'w');
-  const stderrFd = fs.openSync(STDERR_FILE, 'w');
+  const sessionId = randomUUID();
+  const sharePath = path.join(DATA_DIR, `remote-control-${sessionId}.md`);
+  const resumeCommand = `cd ${quoteShellArg(cwd)} && copilot --resume=${sessionId}`;
 
-  let proc;
-  try {
-    proc = spawn('claude', ['remote-control', '--name', 'NanoClaw Remote'], {
+  const result = spawnSync(
+    'copilot',
+    [
+      '-p',
+      REMOTE_PROMPT,
+      `--resume=${sessionId}`,
+      `--share=${sharePath}`,
+      '--allow-all',
+      '--add-dir',
       cwd,
-      stdio: ['pipe', stdoutFd, stderrFd],
-      detached: true,
-    });
-  } catch (err: any) {
-    fs.closeSync(stdoutFd);
-    fs.closeSync(stderrFd);
-    return { ok: false, error: `Failed to start: ${err.message}` };
+      '--no-auto-update',
+      '--stream',
+      'off',
+      '--silent',
+    ],
+    {
+      cwd,
+      encoding: 'utf-8',
+      timeout: URL_TIMEOUT_MS,
+    },
+  );
+
+  if (result.error) {
+    return { ok: false, error: `Failed to start Copilot handoff: ${result.error.message}` };
   }
 
-  // Auto-accept the "Enable Remote Control?" prompt
-  if (proc.stdin) {
-    proc.stdin.write('y\n');
-    proc.stdin.end();
+  if (result.status !== 0) {
+    const details = (result.stderr || result.stdout || '').trim() || `exit code ${result.status ?? 'unknown'}`;
+    return { ok: false, error: `Copilot handoff failed: ${details}` };
   }
 
-  // Close FDs in the parent — the child inherited copies
-  fs.closeSync(stdoutFd);
-  fs.closeSync(stderrFd);
+  const handoffMessage = [
+    'Copilot handoff ready.',
+    `Resume locally: ${resumeCommand}`,
+    `Session note: ${sharePath}`,
+  ].join('\n');
 
-  // Fully detach from parent
-  proc.unref();
+  const session: RemoteControlSession = {
+    sessionId,
+    sharePath,
+    resumeCommand,
+    handoffMessage,
+    cwd,
+    startedBy: sender,
+    startedInChat: chatJid,
+    startedAt: new Date().toISOString(),
+  };
+  activeSession = session;
+  saveState(session);
 
-  const pid = proc.pid;
-  if (!pid) {
-    return { ok: false, error: 'Failed to get process PID' };
-  }
-
-  // Poll the stdout file for the URL
-  return new Promise((resolve) => {
-    const startTime = Date.now();
-
-    const poll = () => {
-      // Check if process died
-      if (!isProcessAlive(pid)) {
-        resolve({ ok: false, error: 'Process exited before producing URL' });
-        return;
-      }
-
-      // Check for URL in stdout file
-      let content = '';
-      try {
-        content = fs.readFileSync(STDOUT_FILE, 'utf-8');
-      } catch {
-        // File might not have content yet
-      }
-
-      const match = content.match(URL_REGEX);
-      if (match) {
-        const session: RemoteControlSession = {
-          pid,
-          url: match[0],
-          startedBy: sender,
-          startedInChat: chatJid,
-          startedAt: new Date().toISOString(),
-        };
-        activeSession = session;
-        saveState(session);
-
-        logger.info(
-          { url: match[0], pid, sender, chatJid },
-          'Remote Control session started',
-        );
-        resolve({ ok: true, url: match[0] });
-        return;
-      }
-
-      // Timeout check
-      if (Date.now() - startTime >= URL_TIMEOUT_MS) {
-        try {
-          process.kill(-pid, 'SIGTERM');
-        } catch {
-          try {
-            process.kill(pid, 'SIGTERM');
-          } catch {
-            // already dead
-          }
-        }
-        resolve({
-          ok: false,
-          error: 'Timed out waiting for Remote Control URL',
-        });
-        return;
-      }
-
-      setTimeout(poll, URL_POLL_MS);
-    };
-
-    poll();
-  });
+  logger.info(
+    { sessionId, sharePath, sender, chatJid },
+    'Copilot handoff session started',
+  );
+  return { ok: true, url: handoffMessage };
 }
 
 export function stopRemoteControl():
@@ -211,14 +162,18 @@ export function stopRemoteControl():
     return { ok: false, error: 'No active Remote Control session' };
   }
 
-  const { pid } = activeSession;
+  const { sessionId, sharePath } = activeSession;
   try {
-    process.kill(pid, 'SIGTERM');
+    fs.unlinkSync(sharePath);
   } catch {
-    // already dead
+    // ignore
   }
   activeSession = null;
   clearState();
-  logger.info({ pid }, 'Remote Control session stopped');
+  logger.info({ sessionId }, 'Copilot handoff session cleared');
   return { ok: true };
+}
+
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

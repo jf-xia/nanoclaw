@@ -1,6 +1,6 @@
 # NanoClaw Security Model
 
-NanoClaw now runs its agent as a local child process on the host. Some path names such as `container/` and `CLAUDE.md` remain for compatibility, but they no longer imply container isolation.
+NanoClaw now runs its agent as a local child process on the host. Some path names such as `container/` and `AGENTS.md` remain for compatibility, but they no longer imply container isolation.
 
 ## Bottom Line
 
