@@ -18,9 +18,9 @@ NanoClaw gives you the core functionality without that mess.
 
 The entire codebase should be something you can read and understand. One Node.js process. A handful of source files. No microservices, no message queues, no abstraction layers.
 
-### Security Through True Isolation
+### Security Through Scoped Execution
 
-Instead of application-level permission systems trying to prevent agents from accessing things, agents run in actual Linux containers. The isolation is at the OS level. Agents can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your Mac.
+Instead of relying on a large multi-process stack, the system now runs agents locally with explicit runtime directories, session isolation, and mount allowlists. This is simpler to inspect and debug, but it is not OS-level sandboxing.
 
 ### Built for One User
 
@@ -54,13 +54,9 @@ Skills to add or switch to different messaging platforms:
 - `/add-sms` - Add SMS via Twilio or similar
 - `/convert-to-telegram` - Replace WhatsApp with Telegram entirely
 
-### Container Runtime
-The project uses Docker by default (cross-platform). For macOS users who prefer Apple Container:
-- `/convert-to-apple-container` - Switch from Docker to Apple Container (macOS-only)
-
 ### Platform Support
-- `/setup-linux` - Make the full setup work on Linux (depends on Docker conversion)
-- `/setup-windows` - Windows support via WSL2 + Docker
+- `/setup-linux` - Improve the full native setup flow on Linux
+- `/setup-windows` - Windows support via WSL2 with the native runner
 
 ---
 
@@ -70,7 +66,7 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 **Core components:**
 - **Claude Agent SDK** as the core agent
-- **Containers** for isolated agent execution (Linux VMs)
+- **Local agent runner** for agent execution
 - **WhatsApp** as the primary I/O channel
 - **Persistent memory** per conversation and globally
 - **Scheduled tasks** that run Claude and can message back
@@ -102,17 +98,17 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Each group maintains a conversation session (via Claude Agent SDK)
 - Sessions auto-compact when context gets too long, preserving critical information
 
-### Container Isolation
-- All agents run inside containers (lightweight Linux VMs)
-- Each agent invocation spawns a container with mounted directories
-- Containers provide filesystem isolation - agents can only see mounted paths
-- Bash access is safe because commands run inside the container, not on the host
-- Browser automation via agent-browser with Chromium in the container
+### Native Agent Execution
+- All agents run as local child processes
+- Each agent invocation prepares group-scoped runtime directories
+- Filesystem access is constrained by working-directory choices and mount allowlists
+- Bash runs on the host, so trust boundaries matter
+- Browser automation depends on locally available browser tooling
 
 ### Scheduled Tasks
 - Users can ask Claude to schedule recurring or one-time tasks from any group
 - Tasks run as full agents in the context of the group that created them
-- Tasks have access to all tools including Bash (safe in container)
+- Tasks have access to all tools including Bash, which now runs on the host
 - Tasks can optionally send messages to their group via `send_message` tool, or complete silently
 - Task runs are logged to the database with duration and result
 - Schedule types: cron expressions, intervals (ms), or one-time (ISO timestamp)
@@ -123,7 +119,7 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - New groups are added explicitly via the main channel
 - Groups are registered in SQLite (via the main channel or IPC `register_group` command)
 - Each group gets a dedicated folder under `groups/`
-- Groups can have additional directories mounted via `containerConfig`
+- Groups can have additional directories attached via `containerConfig`
 
 ### Main Channel Privileges
 - Main channel is the admin/control group (typically self-chat)

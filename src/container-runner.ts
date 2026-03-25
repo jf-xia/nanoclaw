@@ -1,6 +1,6 @@
 /**
  * Agent Runner for NanoClaw
- * Spawns the agent-runner process directly (no Docker/container runtime required)
+ * Spawns the agent-runner process directly (no external runtime required)
  */
 import { ChildProcess, spawn } from 'child_process';
 import fs from 'fs';

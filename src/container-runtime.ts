@@ -1,6 +1,6 @@
 /**
  * Agent runtime utilities for NanoClaw.
- * Replaced Docker/Apple Container abstraction with direct node process execution.
+ * Runs the agent directly as a local Node.js process.
  */
 import fs from 'fs';
 import path from 'path';

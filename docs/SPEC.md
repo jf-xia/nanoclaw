@@ -60,7 +60,7 @@ A personal GitHub Copilot-powered assistant with multi-channel support, persiste
 │  │    • Additional dirs → /workspace/extra/*                      │    │
 │  │                                                                │    │
 │  │  Tools (all groups):                                           │    │
-│  │    • Bash (safe - sandboxed in container!)                     │    │
+│  │    • Bash (runs on host - review access carefully)             │    │
 │  │    • Read, Write, Edit, Glob, Grep (file operations)           │    │
 │  │    • WebSearch, WebFetch (internet access)                     │    │
 │  │    • agent-browser (browser automation)                        │    │
@@ -77,7 +77,7 @@ A personal GitHub Copilot-powered assistant with multi-channel support, persiste
 |-----------|------------|---------|
 | Channel System | Channel registry (`src/channels/registry.ts`) | Channels self-register at startup |
 | Message Storage | SQLite (better-sqlite3) | Store messages for polling |
-| Container Runtime | Containers (Linux VMs) | Isolated environments for agent execution |
+| Agent Runtime | Local child processes | Native execution for agent tasks |
 | Agent | `@github/copilot-sdk` + `@github/copilot` | Run Copilot with tools and MCP servers |
 | Browser Automation | agent-browser + Chromium | Web interaction and screenshots |
 | Runtime | Node.js 20+ | Host process for routing and scheduling |
@@ -269,17 +269,16 @@ nanoclaw/
 │   └── container-runner.ts        # Spawns agents in containers
 │
 ├── container/
-│   ├── Dockerfile                 # Container image (runs as 'node' user, includes Copilot runtime dependencies)
-│   ├── build.sh                   # Build script for container image
-│   ├── agent-runner/              # Code that runs inside the container
+│   ├── build.sh                   # Build script for the local agent runner
+│   ├── agent-runner/              # Code that runs in the local child process
 │   │   ├── package.json
 │   │   ├── tsconfig.json
 │   │   └── src/
 │   │       ├── index.ts           # Entry point (query loop, IPC polling, session resume)
 │   │       └── ipc-mcp-stdio.ts   # Stdio-based MCP server for host communication
 │   └── skills/
-│       ├── capabilities/SKILL.md  # Container capability report skill
-│       ├── status/SKILL.md        # Container health/status skill
+│       ├── capabilities/SKILL.md  # Runtime capability report skill
+│       ├── status/SKILL.md        # Runtime health/status skill
 │       └── agent-browser/         # Browser automation skill files
 │
 ├── dist/                          # Compiled JavaScript (gitignored)
@@ -293,7 +292,6 @@ nanoclaw/
 │       ├── add-gmail/SKILL.md          # /add-gmail - Gmail integration
 │       ├── add-voice-transcription/    # /add-voice-transcription - Whisper
 │       ├── x-integration/SKILL.md      # /x-integration - X/Twitter
-│       ├── convert-to-apple-container/  # /convert-to-apple-container - Apple Container runtime
 │       └── add-parallel/SKILL.md       # /add-parallel - Parallel agents
 │
 ├── groups/
@@ -343,8 +341,7 @@ export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 
-// Container configuration
-export const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
+// Agent runtime configuration
 export const CONTAINER_TIMEOUT = parseInt(process.env.CONTAINER_TIMEOUT || '1800000', 10); // 30min default
 export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min — keep container alive after last result
@@ -353,11 +350,11 @@ export const MAX_CONCURRENT_CONTAINERS = Math.max(1, parseInt(process.env.MAX_CO
 export const TRIGGER_PATTERN = new RegExp(`^@${ASSISTANT_NAME}\\b`, 'i');
 ```
 
-**Note:** Paths must be absolute for container volume mounts to work correctly.
+**Note:** Paths stay absolute so runtime directory preparation is deterministic.
 
-### Container Configuration
+### Runtime Configuration
 
-Groups can have additional directories mounted via `containerConfig` in the SQLite `registered_groups` table (stored as JSON in the `container_config` column). Example registration:
+Groups can have additional directories attached via `containerConfig` in the SQLite `registered_groups` table (stored as JSON in the `container_config` column). Example registration:
 
 ```typescript
 setRegisteredGroup("1234567890@g.us", {
@@ -646,7 +643,7 @@ NanoClaw runs as a single macOS launchd service.
 ### Startup Sequence
 
 When NanoClaw starts, it:
-1. **Ensures container runtime is running** - Automatically starts it if needed; kills orphaned NanoClaw containers from previous runs
+1. **Ensures the local build is ready** - Verifies the agent runner exists and kills orphaned NanoClaw processes from previous runs
 2. Initializes the SQLite database (migrates from JSON files if they exist)
 3. Loads state from SQLite (registered groups, sessions, router state)
 4. **Connects channels** — loops through registered channels, instantiates those with credentials, calls `connect()` on each
@@ -768,7 +765,7 @@ chmod 700 groups/
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | No response to messages | Service not running | Check `launchctl list | grep nanoclaw` |
-| "Copilot agent process exited with code 1" | Container runtime failed to start | Check logs; NanoClaw auto-starts container runtime but may fail |
+| "Copilot agent process exited with code 1" | Agent runner failed to start | Check logs; rebuild with `./container/build.sh` and retry |
 | "Copilot agent process exited with code 1" | Session mount path wrong | Ensure mount is to `/workspace/session` |
 | Session not continuing | Session ID not saved | Check SQLite: `sqlite3 store/messages.db "SELECT * FROM sessions"` |
 | Session not continuing | Mount path mismatch | Per-group session state must be mounted to `/workspace/session` |

@@ -12,40 +12,40 @@ npm run test -- path/to/file.test.ts   # Single test file
 npm run lint           # ESLint src/
 npm run lint:fix       # Auto-fix lint
 npm run format         # Prettier write
-./container/build.sh   # Rebuild agent Docker image
+./container/build.sh   # Rebuild local agent runner
 ```
 
 ## Architecture
 
-Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Incoming messages are stored in SQLite, then routed to Claude agents running inside Docker containers (one per group). Each group has an isolated filesystem and memory.
+Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Incoming messages are stored in SQLite, then routed to Claude agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
 
 **Message flow:**
 
 ```
 Channel → db.storeMessage() → message loop polls → GroupQueue
-  → container-runner spawns Docker container
-    → Claude Code agent runs inside container
-    → container writes output with sentinel markers
+  → container-runner spawns local agent process
+    → Claude Code agent runs with group-scoped runtime dirs
+    → agent writes output with sentinel markers
   → container-runner parses output
   → router.formatOutbound() strips <internal> blocks
   → Channel.sendMessage() delivers reply
 ```
 
-**IPC (container → host):** Containers write JSON files to `data/ipc/{groupFolder}/`. `src/ipc.ts` polls and processes them — task scheduling, cross-group messaging, group registration. Non-main groups can only message their own JID.
+**IPC (agent → host):** The local runner writes JSON files to `data/ipc/{groupFolder}/`. `src/ipc.ts` polls and processes them — task scheduling, cross-group messaging, group registration. Non-main groups can only message their own JID.
 
 **Key files:**
 
 | File | Role |
 |------|------|
 | `src/index.ts` | Orchestrator: channels, message loop, agent invocation |
-| `src/container-runner.ts` | Spawns containers, manages mounts, parses output |
-| `src/ipc.ts` | IPC watcher: processes task/message files from containers |
+| `src/container-runner.ts` | Spawns local runners, prepares runtime dirs, parses output |
+| `src/ipc.ts` | IPC watcher: processes task/message files from local runners |
 | `src/db.ts` | SQLite layer (better-sqlite3, synchronous) |
-| `src/group-queue.ts` | Concurrency manager (default max 5 containers) |
+| `src/group-queue.ts` | Concurrency manager (default max 5 active runners) |
 | `src/router.ts` | XML message formatting, outbound routing |
 | `src/config.ts` | All env vars and computed paths |
 | `src/types.ts` | Shared interfaces (Channel, RegisteredGroup, etc.) |
-| `src/credential-proxy.ts` | HTTP proxy that injects Anthropic API keys for containers |
+| `src/credential-proxy.ts` | Host-side credential bridge for agent requests |
 
 ## Conventions
 
@@ -58,7 +58,7 @@ Channel → db.storeMessage() → message loop polls → GroupQueue
 Use `src/logger.ts` (Pino). Always pass a context object first:
 ```ts
 logger.info({ groupJid, count }, 'Messages processed');
-logger.error({ err, group: name }, 'Container failed');
+logger.error({ err, group: name }, 'Agent failed');
 ```
 
 ### Database
@@ -79,10 +79,10 @@ registerChannel('telegram', (config) => {
 ```
 
 ### Error Handling
-No swallowing errors in bare `catch` blocks — ESLint enforces type narrowing. Failed IPC files move to `data/ipc/errors/` for manual inspection. Container output is bounded by `CONTAINER_MAX_OUTPUT_SIZE`.
+No swallowing errors in bare `catch` blocks — ESLint enforces type narrowing. Failed IPC files move to `data/ipc/errors/` for manual inspection. Agent output is bounded by `CONTAINER_MAX_OUTPUT_SIZE`.
 
-### Container Output Parsing
-Containers delimit their output with sentinel markers:
+### Agent Output Parsing
+Local runners delimit their output with sentinel markers:
 ```
 ---NANOCLAW_OUTPUT_START--- { "result": "..." } ---NANOCLAW_OUTPUT_END---
 ```
@@ -97,7 +97,7 @@ New features go in **skills**, not in core source. Four types:
 | **Feature** | `.claude/skills/<name>/` + `skill/<name>` branch | New channel or capability |
 | **Utility** | `.claude/skills/<name>/` (self-contained) | Standalone tool (e.g., CLI) |
 | **Operational** | `.claude/skills/<name>/` (instructions only) | Workflows, guides, setup |
-| **Container** | `container/skills/<name>/` | Instructions loaded inside agent at runtime |
+| **Runtime** | `container/skills/<name>/` | Instructions loaded inside agent at runtime |
 
 All skills use a SKILL.md with YAML frontmatter:
 ```yaml
@@ -112,9 +112,9 @@ Keep SKILL.md under 500 lines. Put code in separate files, reference via `${CLAU
 
 ## Config & Secrets
 
-`src/config.ts` exposes env vars as typed constants — **never** API keys, only non-secret config. Secrets are injected at container runtime via `src/credential-proxy.ts` (HTTP proxy on `CREDENTIAL_PROXY_PORT`, default 3001). Containers never see host credentials directly.
+`src/config.ts` exposes env vars as typed constants — **never** API keys, only non-secret config. Secrets are resolved on the host before or during local agent execution.
 
-Key env vars: `ASSISTANT_NAME` (trigger prefix), `CONTAINER_IMAGE`, `CONTAINER_TIMEOUT`, `MAX_CONCURRENT_CONTAINERS`, `LOG_LEVEL`.
+Key env vars: `ASSISTANT_NAME` (trigger prefix), `CONTAINER_TIMEOUT`, `MAX_CONCURRENT_CONTAINERS`, `LOG_LEVEL`, `ONECLI_URL`.
 
 ## Testing
 

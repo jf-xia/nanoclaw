@@ -229,7 +229,7 @@ describe('agent-runner timeout behavior', () => {
       { env: NodeJS.ProcessEnv; cwd: string },
     ];
 
-    // Spawns node, not docker
+    // Spawns node directly
     expect(cmd).toBe('node');
     expect(args).toEqual(['/fake/agent-runner/dist/index.js']);
 

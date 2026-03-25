@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  NanoClaw —— 您的专属 Claude 助手，在容器中安全运行。它轻巧易懂，并能根据您的个人需求灵活定制。
+  NanoClaw —— 您的专属 Claude 助手，以本机方式运行在分组工作区中。它轻巧易懂，并能根据您的个人需求灵活定制。
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 [OpenClaw](https://github.com/openclaw/openclaw) 是一个令人印象深刻的项目，但我无法安心使用一个我不了解却能访问我个人隐私的软件。OpenClaw 有近 50 万行代码、53 个配置文件和 70+ 个依赖项。其安全性是应用级别的（通过白名单、配对码实现），而非操作系统级别的隔离。所有东西都在一个共享内存的 Node 进程中运行。
 
-NanoClaw 用一个您能快速理解的代码库，为您提供了同样的核心功能。只有一个进程，少数几个文件。智能体（Agent）运行在具有文件系统隔离的真实 Linux 容器中，而不是依赖于权限检查。
+NanoClaw 用一个您能快速理解的代码库，为您提供了同样的核心功能。只有一个进程，少数几个文件。智能体以本机子进程方式运行，并为每个群组维护独立工作目录、会话状态和挂载策略。
 
 ## 快速开始
 
@@ -31,7 +31,7 @@ cd nanoclaw
 claude
 ```
 
-然后运行 `/setup`。Claude Code 会处理一切：依赖安装、身份验证、容器设置、服务配置。
+然后运行 `/setup`。Claude Code 会处理一切：依赖安装、身份验证、本地 agent-runner 构建和服务配置。
 
 > **注意：** 以 `/` 开头的命令（如 `/setup`、`/add-whatsapp`）是 [Claude Code 技能](https://code.claude.com/docs/en/skills)。请在 `claude` CLI 提示符中输入，而非在普通终端中。
 
@@ -39,7 +39,7 @@ claude
 
 **小巧易懂：** 单一进程，少量源文件。无微服务、无消息队列、无复杂抽象层。让 Claude Code 引导您轻松上手。
 
-**通过隔离保障安全:** 智能体运行在 Linux 容器（在 macOS 上是 Apple Container，或 Docker）中。它们只能看到被明确挂载的内容。即便通过 Bash 访问也十分安全，因为所有命令都在容器内执行，不会直接操作您的宿主机。
+**通过范围控制降低风险：** 智能体现在直接在本机运行，但每个群组都有独立工作目录、会话状态和显式挂载白名单。这是原生运行时，不是操作系统级沙箱，因此仍然需要信任边界和代码审查。
 
 **为单一用户打造:** 这不是一个框架，是一个完全符合您个人需求的、可工作的软件。您可以 Fork 本项目，然后让 Claude Code 根据您的精确需求进行修改和适配。
 
@@ -54,11 +54,11 @@ claude
 ## 功能支持
 
 - **多渠道消息** - 通过 WhatsApp、Telegram、Discord、Slack 或 Gmail 与您的助手对话。使用 `/add-whatsapp` 或 `/add-telegram` 等技能添加渠道，可同时运行一个或多个。
-- **隔离的群组上下文** - 每个群组都拥有独立的 `CLAUDE.md` 记忆和隔离的文件系统。它们在各自的容器沙箱中运行，且仅挂载所需的文件系统。
+- **分组上下文隔离** - 每个群组都拥有独立的 `CLAUDE.md` 记忆、工作目录和 Copilot 会话状态。
 - **主频道** - 您的私有频道（self-chat），用于管理控制；其他所有群组都完全隔离
 - **计划任务** - 运行 Claude 的周期性作业，并可以给您回发消息
 - **网络访问** - 搜索和抓取网页内容
-- **容器隔离** - 智能体在 Apple Container (macOS) 或 Docker (macOS/Linux) 的沙箱中运行
+- **本机运行时** - 智能体作为本地流式子进程执行，启动更快，调试更直接。
 - **智能体集群（Agent Swarms）** - 启动多个专业智能体团队，协作完成复杂任务（首个支持此功能的个人 AI 助手）
 - **可选集成** - 通过技能添加 Gmail (`/add-gmail`) 等更多功能
 
@@ -115,15 +115,14 @@ claude
 - macOS 或 Linux
 - Node.js 20+
 - [Claude Code](https://claude.ai/download)
-- [Apple Container](https://github.com/apple/container) (macOS) 或 [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 
 ## 架构
 
 ```
-渠道 --> SQLite --> 轮询循环 --> 容器 (Claude Agent SDK) --> 响应
+渠道 --> SQLite --> 轮询循环 --> 本地 Agent Runner (Claude Agent SDK) --> 响应
 ```
 
-单一 Node.js 进程。渠道通过技能添加，启动时自注册 — 编排器连接具有凭据的渠道。智能体在具有文件系统隔离的 Linux 容器中执行。每个群组的消息队列带有并发控制。通过文件系统进行 IPC。
+单一 Node.js 进程。渠道通过技能添加，启动时自注册 — 编排器连接具有凭据的渠道。智能体以本机子进程方式执行。每个群组的消息队列带有并发控制。通过文件系统进行 IPC。
 
 完整架构详情请见 [docs/SPEC.md](docs/SPEC.md)。
 
@@ -133,24 +132,24 @@ claude
 - `src/ipc.ts` - IPC 监听与任务处理
 - `src/router.ts` - 消息格式化与出站路由
 - `src/group-queue.ts` - 带全局并发限制的群组队列
-- `src/container-runner.ts` - 生成流式智能体容器
+- `src/container-runner.ts` - 生成流式本地智能体进程
 - `src/task-scheduler.ts` - 运行计划任务
 - `src/db.ts` - SQLite 操作（消息、群组、会话、状态）
 - `groups/*/CLAUDE.md` - 各群组的记忆
 
 ## FAQ
 
-**为什么是 Docker？**
+**为什么改成本机运行？**
 
-Docker 提供跨平台支持（macOS 和 Linux）和成熟的生态系统。在 macOS 上，您可以选择通过运行 `/convert-to-apple-container` 切换到 Apple Container，以获得更轻量级的原生运行时体验。
+本机 runner 去掉了镜像构建、守护进程依赖以及主机与智能体之间的运行时漂移。启动更快，问题更容易定位，仓库中的代码就是实际执行的代码。
 
 **我可以在 Linux 上运行吗？**
 
-可以。Docker 是默认的容器运行时，在 macOS 和 Linux 上都可以使用。只需运行 `/setup`。
+可以。本机 runner 在 macOS 和 Linux 上都可用。只需运行 `/setup`。
 
 **这个项目安全吗？**
 
-智能体在容器中运行，而不是在应用级别的权限检查之后。它们只能访问被明确挂载的目录。您仍然应该审查您运行的代码，但这个代码库小到您真的可以做到。完整的安全模型请见 [docs/SECURITY.md](docs/SECURITY.md)。
+它比一个庞杂的多进程系统更容易审查，但它不是操作系统级沙箱。智能体作为宿主机子进程运行。请只把高权限能力交给可信群组，认真审查挂载范围，并把它当作本地编码代理来对待。完整说明请见 [docs/SECURITY.md](docs/SECURITY.md) 和 [docs/NATIVE_RUNTIME.md](docs/NATIVE_RUNTIME.md)。
 
 **为什么没有配置文件？**
 

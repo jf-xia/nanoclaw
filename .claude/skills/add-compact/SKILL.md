@@ -126,7 +126,7 @@ npm test
 - No automatic compaction threshold (add separately if desired)
 - No `/clear` command (separate skill, separate semantics — `/clear` is a destructive reset)
 - No cross-group compaction (each group's session is isolated)
-- No changes to the container image, Dockerfile, or build script
+- No changes to the runtime bundle or build script
 
 ## Troubleshooting
 

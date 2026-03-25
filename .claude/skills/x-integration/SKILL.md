@@ -181,11 +181,11 @@ if (!handled) {
 
 ---
 
-**2. Container side: `container/agent-runner/src/ipc-mcp.ts`**
+**2. Runtime side: `container/agent-runner/src/ipc-mcp.ts`**
 
 Add import after `cron-parser` import:
 ```typescript
-// @ts-ignore - Copied during Docker build from .claude/skills/x-integration/
+// @ts-ignore - Loaded from .claude/skills/x-integration/ during local runner build
 import { createXTools } from './skills/x-integration/agent.js';
 ```
 
@@ -198,38 +198,7 @@ Add to the end of tools array (before the closing `]`):
 
 **3. Build script: `container/build.sh`**
 
-Change build context from `container/` to project root (required to access `.claude/skills/`):
-```bash
-# Find:
-docker build -t "${IMAGE_NAME}:${TAG}" .
-
-# Replace with:
-cd "$SCRIPT_DIR/.."
-docker build -t "${IMAGE_NAME}:${TAG}" -f container/Dockerfile .
-```
-
----
-
-**4. Dockerfile: `container/Dockerfile`**
-
-First, update the build context paths (required to access `.claude/skills/` from project root):
-```dockerfile
-# Find:
-COPY agent-runner/package*.json ./
-...
-COPY agent-runner/ ./
-
-# Replace with:
-COPY container/agent-runner/package*.json ./
-...
-COPY container/agent-runner/ ./
-```
-
-Then add COPY line after `COPY container/agent-runner/ ./` and before `RUN npm run build`:
-```dockerfile
-# Copy skill MCP tools
-COPY .claude/skills/x-integration/agent.ts ./src/skills/x-integration/
-```
+Make sure the local runner build copies any required skill-side sources before compiling.
 
 ## Setup
 
@@ -257,7 +226,7 @@ This opens Chrome for manual X login. Session saved to `data/x-browser-profile/`
 cat data/x-auth.json  # Should show {"authenticated": true, ...}
 ```
 
-### 3. Rebuild Container
+### 3. Rebuild Runner
 
 ```bash
 ./container/build.sh
@@ -265,7 +234,7 @@ cat data/x-auth.json  # Should show {"authenticated": true, ...}
 
 **Verify success:**
 ```bash
-./container/build.sh 2>&1 | grep -i "agent.ts"  # Should show COPY line
+ls -la container/agent-runner/dist/index.js
 ```
 
 ### 4. Restart Service
@@ -397,16 +366,16 @@ If X updates their UI, selectors in scripts may break. Current selectors:
 | Modal dialog | `[role="dialog"][aria-modal="true"]` |
 | Modal submit | `[data-testid="tweetButton"]` |
 
-### Container Build Issues
+### Runtime Build Issues
 
-If MCP tools not found in container:
+If MCP tools are not available at runtime:
 
 ```bash
 # Verify build copies skill
 ./container/build.sh 2>&1 | grep -i skill
 
-# Check container has the file
-docker run nanoclaw-agent ls -la /app/src/skills/
+# Check the local runner source tree has the file
+find container/agent-runner/src -maxdepth 3 -type f | grep x-integration
 ```
 
 ## Security

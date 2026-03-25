@@ -91,7 +91,7 @@ Build must be clean before proceeding.
 
 ### Set Ollama host (optional)
 
-By default, the MCP server connects to `http://host.docker.internal:11434` (Docker Desktop) with a fallback to `localhost`. To use a custom Ollama host, add to `.env`:
+By default, the MCP server connects to `http://localhost:11434`. To use a custom Ollama host, add to `.env`:
 
 ```bash
 OLLAMA_HOST=http://your-ollama-host:11434
@@ -137,15 +137,15 @@ Look for:
 
 ### Agent says "Ollama is not installed"
 
-The agent is trying to run `ollama` CLI inside the container instead of using the MCP tools. This means:
+The agent is trying to run `ollama` CLI directly instead of using the MCP tools. This means:
 1. The MCP server wasn't registered — check `container/agent-runner/src/index.ts` has the `ollama` entry in `mcpServers`
 2. The per-group source wasn't updated — re-copy files (see Phase 2)
-3. The container wasn't rebuilt — run `./container/build.sh`
+3. The local runner wasn't rebuilt — run `./container/build.sh`
 
 ### "Failed to connect to Ollama"
 
 1. Verify Ollama is running: `ollama list`
-2. Check Docker can reach the host: `docker run --rm curlimages/curl curl -s http://host.docker.internal:11434/api/tags`
+2. Check the host can reach Ollama: `curl -s http://localhost:11434/api/tags`
 3. If using a custom host, check `OLLAMA_HOST` in `.env`
 
 ### Agent doesn't use Ollama tools

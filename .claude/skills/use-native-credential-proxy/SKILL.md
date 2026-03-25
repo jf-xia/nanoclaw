@@ -141,7 +141,7 @@ Expected: `Credential proxy started` with port and auth mode.
 
 **Port 3001 already in use:** Set `CREDENTIAL_PROXY_PORT=<other port>` in `.env` or as an environment variable.
 
-**Container can't reach proxy (Linux):** The proxy binds to the `docker0` bridge IP by default. If that interface doesn't exist (e.g. rootless Docker), set `CREDENTIAL_PROXY_HOST=0.0.0.0` as an environment variable.
+**Agent can't reach proxy (Linux):** If the default bind host is not reachable from your local runner setup, set `CREDENTIAL_PROXY_HOST=0.0.0.0` as an environment variable.
 
 **OAuth token expired (401 errors):** Re-run `claude setup-token` in a terminal and update the token in `.env`.
 

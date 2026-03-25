@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 /**
  * Tests for the environment check step.
  *
- * Verifies: config detection, Docker/AC detection, DB queries.
+ * Verifies: config detection, runtime readiness, DB queries.
  */
 
 describe('environment detection', () => {

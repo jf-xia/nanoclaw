@@ -1,12 +1,12 @@
 /**
  * NanoClaw Agent Runner
- * Runs inside a container, receives config via stdin, outputs result to stdout.
+ * Runs as a local Node.js process, receives config via stdin, outputs result to stdout.
  *
  * Input protocol:
  *   Stdin: Full ContainerInput JSON (read until EOF, like before)
- *   IPC:   Follow-up messages written as JSON files to /workspace/ipc/input/
+ *   IPC:   Follow-up messages written as JSON files to the configured IPC input dir
  *          Files: {type:"message", text:"..."}.json — polled and consumed
- *          Sentinel: /workspace/ipc/input/_close — signals session end
+ *          Sentinel: input/_close — signals session end
  *
  * Stdout protocol:
  *   Each result is wrapped in OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs.
@@ -47,9 +47,8 @@ interface ParsedMessage {
   content: string;
 }
 
-// Workspace paths — configurable via env vars for direct (non-container) execution.
-// Defaults retain the original container paths for backwards compatibility.
-// todo4fix: /workspace/ should be ./workspace/, and check that all file operations work correctly in direct execution mode.
+// Workspace paths are configurable via env vars so the runner can execute locally
+// while preserving the same logical directory layout across app entry points.
 const WORKSPACE_IPC_DIR = process.env.NANOCLAW_IPC_DIR || './workspace/ipc';
 const WORKSPACE_SESSION_DIR = process.env.NANOCLAW_SESSION_DIR || './workspace/session';
 const WORKSPACE_GROUP_DIR = process.env.NANOCLAW_GROUP_DIR || './workspace/group';

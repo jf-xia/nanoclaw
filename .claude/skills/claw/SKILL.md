@@ -1,11 +1,11 @@
 ---
 name: claw
-description: Install the claw CLI tool — run NanoClaw agent containers from the command line without opening a chat app.
+description: Install the claw CLI tool — run NanoClaw agents locally from the command line without opening a chat app.
 ---
 
 # claw — NanoClaw CLI
 
-`claw` is a Python CLI that sends prompts directly to a NanoClaw agent container from the terminal. It reads registered groups from the NanoClaw database, picks up secrets from `.env`, and pipes a JSON payload into a container run — no chat app required.
+`claw` is a Python CLI that sends prompts directly to the local NanoClaw agent runner from the terminal. It reads registered groups from the NanoClaw database, picks up secrets from `.env`, prepares the same runtime directories as the main app, and pipes a JSON payload into the runner.
 
 ## What it does
 
@@ -14,15 +14,13 @@ description: Install the claw CLI tool — run NanoClaw agent containers from th
 - Resume a previous session with `-s <session-id>`
 - Read prompts from stdin (`--pipe`) for scripting and piping
 - List all registered groups with `--list-groups`
-- Auto-detects `container` or `docker` runtime (or override with `--runtime`)
 - Prints the agent's response to stdout; session ID to stderr
-- Verbose mode (`-v`) shows the command, redacted payload, and exit code
+- Verbose mode (`-v`) shows the local command, payload, and exit code
 
 ## Prerequisites
 
 - Python 3.8 or later
-- NanoClaw installed with a built and tagged container image (`nanoclaw-agent:latest`)
-- Either `container` (Apple Container, macOS 15+) or `docker` available in `PATH`
+- NanoClaw installed with a built local agent runner (`./container/build.sh`)
 
 ## Install
 
@@ -87,12 +85,6 @@ cat report.txt | claw --pipe "Summarize this report"
 # List all registered groups
 claw --list-groups
 
-# Force a specific runtime
-claw --runtime docker "Hello"
-
-# Use a custom image tag (e.g. after rebuilding with a new tag)
-claw --image nanoclaw-agent:dev "Hello"
-
 # Verbose mode (debug info, secrets redacted)
 claw -v "Hello"
 
@@ -102,25 +94,25 @@ claw --timeout 600 "Run the full analysis"
 
 ## Troubleshooting
 
-### "neither 'container' nor 'docker' found"
+### "local agent runner is not built"
 
-Install Docker Desktop or Apple Container (macOS 15+), or pass `--runtime` explicitly.
+Run `./container/build.sh` from the NanoClaw repo root.
 
 ### "no secrets found in .env"
 
 The script auto-detects your NanoClaw directory and reads `.env` from it. Check that the file exists and contains at least one of: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`.
 
-### Container times out
+### Runner times out
 
-The default timeout is 300 seconds. For longer tasks, pass `--timeout 600` (or higher). If the container consistently hangs, check that your `nanoclaw-agent:latest` image is up to date by running `./container/build.sh`.
+The default timeout is 300 seconds. For longer tasks, pass `--timeout 600` (or higher). If the runner consistently hangs, rebuild it with `./container/build.sh`.
 
 ### "group not found"
 
 Run `claw --list-groups` to see what's registered. Group lookup does a fuzzy partial match on name and folder — if your query matches multiple groups, you'll get an error listing the ambiguous matches.
 
-### Container crashes mid-stream
+### Runner crashes mid-stream
 
-Containers run with `--rm` so they are automatically removed. If the agent crashes before emitting the output sentinel, `claw` falls back to printing raw stdout. Use `-v` to see what the container produced. Rebuild the image with `./container/build.sh` if crashes are consistent.
+If the agent crashes before emitting the output sentinel, `claw` falls back to printing raw stdout. Use `-v` to see what the runner produced. Rebuild the local runner with `./container/build.sh` if crashes are consistent.
 
 ### Override the NanoClaw directory
 

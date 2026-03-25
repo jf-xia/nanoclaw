@@ -518,7 +518,6 @@ Migration from the old skills engine to branches is complete. All feature skills
 | `skill/pdf-reader` | `skill/whatsapp` | PDF attachment reading |
 | `skill/local-whisper` | `skill/voice-transcription` | Local whisper.cpp transcription |
 | `skill/ollama-tool` | `main` | Ollama MCP server for local models |
-| `skill/apple-container` | `main` | Apple Container runtime |
 | `skill/reactions` | `main` | WhatsApp emoji reactions |
 
 ### What was removed

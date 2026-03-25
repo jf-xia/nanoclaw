@@ -6,14 +6,14 @@ Adds Parallel AI MCP integration to NanoClaw for advanced web research capabilit
 
 - **Quick Search** - Fast web lookups using Parallel Search API (free to use)
 - **Deep Research** - Comprehensive analysis using Parallel Task API (asks permission)
-- **Non-blocking Design** - Uses NanoClaw scheduler for result polling (no container blocking)
+- **Non-blocking Design** - Uses NanoClaw scheduler for result polling (no runner blocking)
 
 ## Prerequisites
 
 User must have:
 1. Parallel AI API key from https://platform.parallel.ai
 2. NanoClaw already set up and running
-3. Docker installed and running
+3. NanoClaw already rebuilt with the local agent runner
 
 ## Implementation Steps
 
@@ -214,17 +214,17 @@ AskUserQuestion: I can do deep research on [topic] using Parallel's Task API. Th
 **Default behavior:** Prefer search for most questions. Only suggest deep research when the topic genuinely requires comprehensive analysis.
 ```
 
-### 6. Rebuild Container
+### 6. Rebuild Runner
 
-Build the container with updated agent runner:
+Build the local agent runner with updated code:
 
 ```bash
 ./container/build.sh
 ```
 
-Verify the build:
+Verify the build by checking the compiled entry exists:
 ```bash
-echo '{}' | docker run -i --entrypoint /bin/echo nanoclaw-agent:latest "Container OK"
+ls -la container/agent-runner/dist/index.js
 ```
 
 ### 7. Restart Service

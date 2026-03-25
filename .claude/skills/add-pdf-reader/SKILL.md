@@ -5,7 +5,7 @@ description: Add PDF reading to NanoClaw agents. Extracts text from PDFs via pdf
 
 # Add PDF Reader
 
-Adds PDF reading capability to all container agents using poppler-utils (pdftotext/pdfinfo). PDFs sent as WhatsApp attachments are auto-downloaded to the group workspace.
+Adds PDF reading capability to all NanoClaw agents using `pdftotext` / `pdfinfo`. PDFs sent as WhatsApp attachments are auto-downloaded to the group workspace.
 
 ## Phase 1: Pre-flight
 
@@ -40,7 +40,7 @@ git merge whatsapp/skill/pdf-reader || {
 This merges in:
 - `container/skills/pdf-reader/SKILL.md` (agent-facing documentation)
 - `container/skills/pdf-reader/pdf-reader` (CLI script)
-- `poppler-utils` in `container/Dockerfile`
+- host-side `pdftotext` / `pdfinfo` availability
 - PDF attachment download in `src/channels/whatsapp.ts`
 - PDF tests in `src/channels/whatsapp.test.ts`
 
@@ -93,7 +93,7 @@ Look for:
 
 ### Agent says pdf-reader command not found
 
-Container needs rebuilding. Run `./container/build.sh` and restart the service.
+Ensure the host has `pdftotext` installed and rebuild the local runner with `./container/build.sh`, then restart the service.
 
 ### PDF text extraction is empty
 
