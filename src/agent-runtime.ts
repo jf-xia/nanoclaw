@@ -25,7 +25,7 @@ const IPC_POLL_MS = 500;
 const INSTRUCTION_FILENAMES = ['AGENTS.md'];
 const COPILOT_CLI_BINARY = process.platform === 'win32' ? 'copilot.cmd' : 'copilot';
 
-export interface ContainerInput {
+export interface AgentRuntimeInput {
   prompt: string;
   sessionId?: string;
   groupFolder: string;
@@ -35,7 +35,7 @@ export interface ContainerInput {
   assistantName?: string;
 }
 
-export interface ContainerOutput {
+export interface AgentRuntimeOutput {
   status: 'success' | 'error';
   result: string | null;
   newSessionId?: string;
@@ -358,7 +358,7 @@ function instructionPathsFor(dir: string): string[] {
 }
 
 function loadAgentInstructions(
-  input: ContainerInput,
+  input: AgentRuntimeInput,
   context: AgentContext,
   extraDirs: string[],
 ): string | undefined {
@@ -399,7 +399,7 @@ function loadAgentInstructions(
 }
 
 function buildCliArgs(
-  input: ContainerInput,
+  input: AgentRuntimeInput,
   context: AgentContext,
   extraDirs: string[],
 ): string[] {
@@ -471,7 +471,7 @@ function resolveModel(sdkEnv: Record<string, string | undefined>): string | unde
 }
 
 function buildSessionConfig(
-  input: ContainerInput,
+  input: AgentRuntimeInput,
   context: AgentContext,
   sdkEnv: Record<string, string | undefined>,
   mcpServerPath: string,
@@ -482,7 +482,7 @@ function buildSessionConfig(
   const systemMessage = loadAgentInstructions(input, context, extraDirs);
 
   return {
-    clientName: 'nanoclaw-agent-runner',
+    clientName: 'nanoclaw-agent-runtime',
     configDir: context.groupSessionsDir,
     workingDirectory: context.groupDir,
     model,
@@ -540,7 +540,7 @@ function attachSessionHandlers(
   context: AgentContext,
   assistantName: string | undefined,
   archivedCompactions: Set<string>,
-  emitOutput: (output: ContainerOutput) => void,
+  emitOutput: (output: AgentRuntimeOutput) => void,
 ): () => void {
   return session.on((event) => {
     logger.debug({ agentId: context.agentId, event: describeEvent(event) }, 'Copilot event');
@@ -682,7 +682,7 @@ async function runQuery(
   return { closedDuringQuery };
 }
 
-function buildInitialPrompt(input: ContainerInput, inputDir: string): string {
+function buildInitialPrompt(input: AgentRuntimeInput, inputDir: string): string {
   let prompt = input.prompt;
   if (input.isScheduledTask) {
     prompt = `[SCHEDULED TASK - The following message was sent automatically and is not coming directly from the user or group.]\n\n${prompt}`;
@@ -699,7 +699,7 @@ function buildInitialPrompt(input: ContainerInput, inputDir: string): string {
 function writeRunLog(
   context: AgentContext,
   group: RegisteredGroup,
-  input: ContainerInput,
+  input: AgentRuntimeInput,
   status: 'success' | 'error',
   durationMs: number,
   error?: string,
@@ -725,12 +725,12 @@ function writeRunLog(
   fs.writeFileSync(logFile, lines.join('\n'));
 }
 
-export async function runContainerAgent(
+export async function runAgentRuntime(
   group: RegisteredGroup,
-  input: ContainerInput,
+  input: AgentRuntimeInput,
   onProcess: (agentId: string, groupFolder: string) => void,
-  onOutput?: (output: ContainerOutput) => Promise<void>,
-): Promise<ContainerOutput> {
+  onOutput?: (output: AgentRuntimeOutput) => Promise<void>,
+): Promise<AgentRuntimeOutput> {
   const startTime = Date.now();
   const context = createAgentContext(group);
   ensureRuntimeDirs(context);
@@ -762,7 +762,7 @@ export async function runContainerAgent(
   const archivedCompactions = new Set<string>();
 
   let session: CopilotSession | undefined;
-  let latestOutput: ContainerOutput = {
+  let latestOutput: AgentRuntimeOutput = {
     status: 'success',
     result: null,
     newSessionId: input.sessionId,
@@ -770,7 +770,7 @@ export async function runContainerAgent(
   let hadStreamingOutput = false;
   let outputChain = Promise.resolve();
 
-  const queueOutput = (output: ContainerOutput) => {
+  const queueOutput = (output: AgentRuntimeOutput) => {
     latestOutput = output;
     if (output.result) {
       hadStreamingOutput = true;
@@ -857,7 +857,7 @@ export async function runContainerAgent(
       };
     }
 
-    const errorOutput: ContainerOutput = {
+    const errorOutput: AgentRuntimeOutput = {
       status: 'error',
       result: null,
       newSessionId: session?.sessionId ?? latestOutput.newSessionId,
@@ -891,4 +891,3 @@ export async function runContainerAgent(
     }
   }
 }
-

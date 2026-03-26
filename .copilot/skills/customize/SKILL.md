@@ -51,7 +51,7 @@ Questions to ask:
 - Which groups should have access?
 
 Implementation:
-1. Add MCP server config to the container settings (see `src/container-runner.ts` for how MCP servers are mounted)
+1. Add MCP server config to the runtime settings (see `src/agent-runtime.ts` for how MCP servers are wired)
 2. Document available tools in `groups/AGENTS.md`
 
 ### Changing Assistant Behavior

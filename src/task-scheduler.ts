@@ -2,8 +2,11 @@ import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
 import { syncAgentSnapshots } from './agent-snapshots.js';
+import {
+  type AgentRuntimeOutput,
+  runAgentRuntime,
+} from './agent-runtime.js';
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
-import { ContainerOutput, runContainerAgent } from './container-runner.js';
 import {
   getAllTasks,
   getDueTasks,
@@ -154,7 +157,7 @@ async function runTask(
   };
 
   try {
-    const output = await runContainerAgent(
+    const output = await runAgentRuntime(
       group,
       {
         prompt: task.prompt,
@@ -167,7 +170,7 @@ async function runTask(
       },
       (agentId, groupFolder) =>
         deps.onProcess(task.chat_jid, agentId, groupFolder),
-      async (streamedOutput: ContainerOutput) => {
+      async (streamedOutput: AgentRuntimeOutput) => {
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Forward result to user (sendMessage handles formatting)

@@ -8,10 +8,10 @@ Single Node.js process. Channels (Telegram, Slack, Discord, Gmail) self-register
 
 ```
 Channel → storage.storeMessage() → message loop polls → GroupQueue
-  → container-runner spawns local agent process
+  → agent-runtime starts the local agent session
     → Copilot CLI agent runs with group-scoped runtime dirs
     → agent writes output with sentinel markers
-  → container-runner parses output
+  → agent-runtime yields structured output
   → router.formatOutbound() strips <internal> blocks
   → Channel.sendMessage() delivers reply
 ```

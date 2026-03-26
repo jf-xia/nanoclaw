@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from './config.js';
+import {
+  ASSISTANT_NAME,
+  DEFAULT_SENDER_ALLOWLIST,
+  TRIGGER_PATTERN,
+} from './config.js';
 import {
   escapeXml,
   formatMessages,
   formatOutbound,
   stripInternalTags,
 } from './router.js';
+import { requiresMessageTrigger, shouldProcessTriggeredMessages } from './trigger-gating.js';
 import { NewMessage } from './types.js';
 
 function makeMsg(overrides: Partial<NewMessage> = {}): NewMessage {
@@ -206,51 +211,59 @@ describe('formatOutbound', () => {
 // --- Trigger gating with requiresTrigger flag ---
 
 describe('trigger gating (requiresTrigger interaction)', () => {
-  // Replicates the exact logic from processGroupMessages and startMessageLoop:
-  //   if (!isMainGroup && group.requiresTrigger !== false) { check trigger }
-  function shouldRequireTrigger(
-    isMainGroup: boolean,
-    requiresTrigger: boolean | undefined,
-  ): boolean {
-    return !isMainGroup && requiresTrigger !== false;
-  }
+  const chatJid = 'group:alpha';
 
-  function shouldProcess(
-    isMainGroup: boolean,
-    requiresTrigger: boolean | undefined,
-    messages: NewMessage[],
-  ): boolean {
-    if (!shouldRequireTrigger(isMainGroup, requiresTrigger)) return true;
-    return messages.some((m) => TRIGGER_PATTERN.test(m.content.trim()));
+  function makeGroup(overrides: { isMain?: boolean; requiresTrigger?: boolean } = {}) {
+    return {
+      isMain: overrides.isMain,
+      requiresTrigger: overrides.requiresTrigger,
+    };
   }
 
   it('main group always processes (no trigger needed)', () => {
     const msgs = [makeMsg({ content: 'hello no trigger' })];
-    expect(shouldProcess(true, undefined, msgs)).toBe(true);
+    expect(shouldProcessTriggeredMessages(makeGroup({ isMain: true }), msgs, chatJid, DEFAULT_SENDER_ALLOWLIST)).toBe(true);
   });
 
   it('main group processes even with requiresTrigger=true', () => {
     const msgs = [makeMsg({ content: 'hello no trigger' })];
-    expect(shouldProcess(true, true, msgs)).toBe(true);
+    expect(requiresMessageTrigger(makeGroup({ isMain: true, requiresTrigger: true }))).toBe(false);
+    expect(shouldProcessTriggeredMessages(makeGroup({ isMain: true, requiresTrigger: true }), msgs, chatJid, DEFAULT_SENDER_ALLOWLIST)).toBe(true);
   });
 
   it('non-main group with requiresTrigger=undefined requires trigger (defaults to true)', () => {
     const msgs = [makeMsg({ content: 'hello no trigger' })];
-    expect(shouldProcess(false, undefined, msgs)).toBe(false);
+    expect(requiresMessageTrigger(makeGroup())).toBe(true);
+    expect(shouldProcessTriggeredMessages(makeGroup(), msgs, chatJid, DEFAULT_SENDER_ALLOWLIST)).toBe(false);
   });
 
   it('non-main group with requiresTrigger=true requires trigger', () => {
     const msgs = [makeMsg({ content: 'hello no trigger' })];
-    expect(shouldProcess(false, true, msgs)).toBe(false);
+    expect(requiresMessageTrigger(makeGroup({ requiresTrigger: true }))).toBe(true);
+    expect(shouldProcessTriggeredMessages(makeGroup({ requiresTrigger: true }), msgs, chatJid, DEFAULT_SENDER_ALLOWLIST)).toBe(false);
   });
 
   it('non-main group with requiresTrigger=true processes when trigger present', () => {
     const msgs = [makeMsg({ content: `@${ASSISTANT_NAME} do something` })];
-    expect(shouldProcess(false, true, msgs)).toBe(true);
+    expect(shouldProcessTriggeredMessages(makeGroup({ requiresTrigger: true }), msgs, chatJid, DEFAULT_SENDER_ALLOWLIST)).toBe(true);
   });
 
   it('non-main group with requiresTrigger=false always processes (no trigger needed)', () => {
     const msgs = [makeMsg({ content: 'hello no trigger' })];
-    expect(shouldProcess(false, false, msgs)).toBe(true);
+    expect(requiresMessageTrigger(makeGroup({ requiresTrigger: false }))).toBe(false);
+    expect(shouldProcessTriggeredMessages(makeGroup({ requiresTrigger: false }), msgs, chatJid, DEFAULT_SENDER_ALLOWLIST)).toBe(true);
+  });
+
+  it('rejects trigger messages from denied senders', () => {
+    const msgs = [makeMsg({ content: `@${ASSISTANT_NAME} do something`, sender: 'eve' })];
+    const allowlist = {
+      ...DEFAULT_SENDER_ALLOWLIST,
+      chats: {
+        ...DEFAULT_SENDER_ALLOWLIST.chats,
+        [chatJid]: { allow: ['alice'], mode: 'trigger' as const },
+      },
+    };
+
+    expect(shouldProcessTriggeredMessages(makeGroup({ requiresTrigger: true }), msgs, chatJid, allowlist)).toBe(false);
   });
 });

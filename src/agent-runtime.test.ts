@@ -144,7 +144,7 @@ vi.mock('fs', async () => {
 });
 
 import fs from 'fs';
-import { runContainerAgent } from './container-runner.js';
+import { runAgentRuntime, type AgentRuntimeInput } from './agent-runtime.js';
 import type { RegisteredGroup } from './types.js';
 
 const testGroup: RegisteredGroup = {
@@ -154,7 +154,7 @@ const testGroup: RegisteredGroup = {
   added_at: new Date().toISOString(),
 };
 
-const testInput = {
+const testInput: AgentRuntimeInput = {
   prompt: 'Hello',
   groupFolder: 'test-group',
   chatJid: 'test@g.us',
@@ -167,7 +167,7 @@ async function flushStartup(): Promise<void> {
   await Promise.resolve();
 }
 
-describe('runContainerAgent', () => {
+describe('runAgentRuntime', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     runtime.reset();
@@ -184,7 +184,7 @@ describe('runContainerAgent', () => {
   it('treats idle timeout after streamed output as success', async () => {
     const onOutput = vi.fn(async () => {});
 
-    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, onOutput);
+    const resultPromise = runAgentRuntime(testGroup, testInput, () => {}, onOutput);
     await flushStartup();
 
     runtime.emitAssistantMessage('Here is my response');
@@ -204,7 +204,7 @@ describe('runContainerAgent', () => {
   it('returns error when the session times out without output', async () => {
     const onOutput = vi.fn(async () => {});
 
-    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, onOutput);
+    const resultPromise = runAgentRuntime(testGroup, testInput, () => {}, onOutput);
     await flushStartup();
 
     await vi.advanceTimersByTimeAsync(1830000);
@@ -218,7 +218,7 @@ describe('runContainerAgent', () => {
   });
 
   it('returns once the close sentinel is observed after a query', async () => {
-    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, undefined);
+    const resultPromise = runAgentRuntime(testGroup, testInput, () => {}, undefined);
     await flushStartup();
 
     runtime.emitAssistantMessage('Done');
@@ -238,7 +238,7 @@ describe('runContainerAgent', () => {
       COPILOT_GITHUB_TOKEN: 'copilot-token',
     });
 
-    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, undefined);
+    const resultPromise = runAgentRuntime(testGroup, testInput, () => {}, undefined);
     await flushStartup();
     runtime.emitIdle();
     runtime.setCloseRequested(true);
@@ -259,7 +259,7 @@ describe('runContainerAgent', () => {
   it('registers runtime metadata for the active agent', async () => {
     const onProcess = vi.fn();
 
-    const resultPromise = runContainerAgent(testGroup, testInput, onProcess, undefined);
+    const resultPromise = runAgentRuntime(testGroup, testInput, onProcess, undefined);
     await flushStartup();
     runtime.emitIdle();
     runtime.setCloseRequested(true);

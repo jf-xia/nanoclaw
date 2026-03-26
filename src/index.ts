@@ -9,7 +9,6 @@ import {
   ONECLI_URL,
   POLL_INTERVAL,
   TIMEZONE,
-  TRIGGER_PATTERN,
 } from './config.js';
 import './channels/index.js';
 import {
@@ -24,9 +23,9 @@ import {
   writeTasksSnapshot,
 } from './agent-snapshots.js';
 import {
-  ContainerOutput,
-  runContainerAgent,
-} from './container-runner.js';
+  type AgentRuntimeOutput,
+  runAgentRuntime,
+} from './agent-runtime.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -53,11 +52,11 @@ import {
 } from './remote-control.js';
 import {
   isSenderAllowed,
-  isTriggerAllowed,
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
 import { startSchedulerLoop } from './task-scheduler.js';
+import { shouldProcessTriggeredMessages } from './trigger-gating.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
@@ -187,8 +186,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     return true;
   }
 
-  const isMainGroup = group.isMain === true;
-
   const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
   const missedMessages = getMessagesSince(
     chatJid,
@@ -198,15 +195,16 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
-  // For non-main groups, check if trigger is required and present
-  if (!isMainGroup && group.requiresTrigger !== false) {
-    const allowlistCfg = loadSenderAllowlist();
-    const hasTrigger = missedMessages.some(
-      (m) =>
-        TRIGGER_PATTERN.test(m.content.trim()) &&
-        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-    );
-    if (!hasTrigger) return true;
+  const allowlistCfg = loadSenderAllowlist();
+  if (
+    !shouldProcessTriggeredMessages(
+      group,
+      missedMessages,
+      chatJid,
+      allowlistCfg,
+    )
+  ) {
+    return true;
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
@@ -298,7 +296,7 @@ async function runAgent(
   group: RegisteredGroup,
   prompt: string,
   chatJid: string,
-  onOutput?: (output: ContainerOutput) => Promise<void>,
+  onOutput?: (output: AgentRuntimeOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
@@ -312,7 +310,7 @@ async function runAgent(
 
   // Wrap onOutput to track session ID from streamed results (success only)
   const wrappedOnOutput = onOutput
-    ? async (output: ContainerOutput) => {
+    ? async (output: AgentRuntimeOutput) => {
         if (output.newSessionId && output.status === 'success') {
           persistSessionId(group.folder, output.newSessionId);
         }
@@ -321,7 +319,7 @@ async function runAgent(
     : undefined;
 
   try {
-    const output = await runContainerAgent(
+    const output = await runAgentRuntime(
       group,
       {
         prompt,
@@ -398,21 +396,19 @@ async function startMessageLoop(): Promise<void> {
             continue;
           }
 
-          const isMainGroup = group.isMain === true;
-          const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
-
           // For non-main groups, only act on trigger messages.
           // Non-trigger messages accumulate in storage and get pulled as
           // context when a trigger eventually arrives.
-          if (needsTrigger) {
-            const allowlistCfg = loadSenderAllowlist();
-            const hasTrigger = groupMessages.some(
-              (m) =>
-                TRIGGER_PATTERN.test(m.content.trim()) &&
-                (m.is_from_me ||
-                  isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-            );
-            if (!hasTrigger) continue;
+          const allowlistCfg = loadSenderAllowlist();
+          if (
+            !shouldProcessTriggeredMessages(
+              group,
+              groupMessages,
+              chatJid,
+              allowlistCfg,
+            )
+          ) {
+            continue;
           }
 
           // Pull all messages since lastAgentTimestamp so non-trigger

@@ -12,7 +12,7 @@ This guide covers debugging the native agent execution path.
 ```
 Host process                         Local runner
 ─────────────────────────────────────────────────────────────
-src/container-runner.ts             container/agent-runner/
+src/agent-runtime.ts                container/agent-runner/
     │                                   │
     │ spawns child process              │ runs GitHub Copilot SDK/CLI
     │ prepares runtime dirs             │ with MCP servers

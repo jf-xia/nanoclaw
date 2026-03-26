@@ -56,7 +56,7 @@ git merge upstream/skill/native-credential-proxy || {
 
 This merges in:
 - `src/credential-proxy.ts` and `src/credential-proxy.test.ts` (the proxy implementation)
-- Restored credential proxy usage in `src/index.ts`, `src/container-runner.ts`, `src/container-runtime.ts`, `src/config.ts`
+- Restored credential proxy usage in `src/index.ts`, `src/agent-runtime.ts`, `src/container-runtime.ts`, `src/config.ts`
 - Removed `@onecli-sh/sdk` dependency
 - Restored `CREDENTIAL_PROXY_PORT` config (default 3001)
 - Restored platform-aware proxy bind address detection
@@ -69,7 +69,7 @@ If the merge reports conflicts beyond `package-lock.json`, resolve them by readi
 ```bash
 npm install
 npm run build
-npx vitest run src/credential-proxy.test.ts src/container-runner.test.ts
+npx vitest run src/credential-proxy.test.ts src/agent-runtime.test.ts
 ```
 
 All tests must pass and build must be clean before proceeding.
