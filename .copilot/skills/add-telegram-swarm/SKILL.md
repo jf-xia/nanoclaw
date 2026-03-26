@@ -242,7 +242,7 @@ Read `groups/global/AGENTS.md` and add a Message Formatting section:
 ```markdown
 ## Message Formatting
 
-NEVER use markdown. Only use WhatsApp/Telegram formatting:
+NEVER use markdown. Only use Telegram-style chat formatting:
 - *single asterisks* for bold (NEVER **double asterisks**)
 - _underscores_ for italic
 - • bullet points
@@ -253,10 +253,10 @@ No ## headings. No [links](url). No **double stars**.
 
 #### 5b. Update existing group AGENTS.md headings
 
-In any group AGENTS.md that has a "WhatsApp Formatting" section (e.g. `groups/main/AGENTS.md`), rename the heading to reflect multi-channel support:
+In any group AGENTS.md that has a messaging formatting section, rename the heading to reflect multi-channel support:
 
 ```
-## WhatsApp Formatting (and other messaging apps)
+## Messaging App Formatting
 ```
 
 #### 5c. Add Agent Teams instructions to Telegram groups
@@ -280,7 +280,7 @@ Each team member MUST be instructed to:
 2. *Also communicate with teammates* via `SendMessage` as normal for coordination.
 3. Keep group messages *short* — 2-4 sentences max per message. Break longer content into multiple `send_message` calls. No walls of text.
 4. Use the `sender` parameter consistently — always the same name so the bot identity stays stable.
-5. NEVER use markdown formatting. Use ONLY WhatsApp/Telegram formatting: single *asterisks* for bold (NOT **double**), _underscores_ for italic, • for bullets, ```backticks``` for code. No ## headings, no [links](url), no **double asterisks**.
+5. NEVER use markdown formatting. Use ONLY messaging-app formatting: single *asterisks* for bold (NOT **double**), _underscores_ for italic, • for bullets, ```backticks``` for code. No ## headings, no [links](url), no **double asterisks**.
 
 ### Example team creation prompt
 

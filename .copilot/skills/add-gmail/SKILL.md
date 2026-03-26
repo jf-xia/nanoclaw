@@ -1,6 +1,6 @@
 ---
 name: add-gmail
-description: Add Gmail integration to NanoClaw. Can be configured as a tool (agent reads/sends emails when triggered from WhatsApp) or as a full channel (emails can trigger the agent, schedule tasks, and receive replies). Guides through GCP OAuth setup and implements the integration.
+description: Add Gmail integration to NanoClaw. Can be configured as a tool or as a full channel so emails can trigger the agent, schedule tasks, and receive replies. Guides through GCP OAuth setup and implementation.
 ---
 
 # Add Gmail Integration

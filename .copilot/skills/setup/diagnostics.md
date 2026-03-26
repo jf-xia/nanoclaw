@@ -22,7 +22,7 @@ Write `/tmp/nanoclaw-diagnostics.json`. No paths, usernames, hostnames, or IP ad
     "os_platform": "darwin",
     "arch": "arm64",
     "node_major_version": 22,
-    "channels_selected": ["telegram", "whatsapp"],
+    "channels_selected": ["telegram", "slack"],
     "error_count": 0,
     "failed_step": null
   }

@@ -14,6 +14,11 @@ import {
 import { readEnvFile } from './env.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
+import {
+  renderGlobalAgentInstructions,
+  renderMainAgentInstructions,
+} from './runtime-assets/agents.js';
+import { RUNTIME_SKILLS } from './runtime-assets/skills.js';
 import { RegisteredGroup } from './types.js';
 
 const IPC_POLL_MS = 500;
@@ -94,25 +99,14 @@ function ensureRuntimeDirs(context: AgentContext): void {
   fs.mkdirSync(context.inputDir, { recursive: true });
   fs.mkdirSync(context.groupSessionsDir, { recursive: true });
   fs.mkdirSync(context.logsDir, { recursive: true });
+  fs.mkdirSync(context.skillsDst, { recursive: true });
 }
 
 function syncRuntimeSkills(context: AgentContext): void {
-  const skillsSrc = path.join(PROJECT_ROOT, 'container', 'skills');
-  if (!fs.existsSync(skillsSrc)) return;
-
-  for (const skillDir of fs.readdirSync(skillsSrc)) {
-    const srcDir = path.join(skillsSrc, skillDir);
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(srcDir);
-    } catch (err) {
-      logger.warn({ srcDir, err }, 'Failed to stat runtime skill directory');
-      continue;
-    }
-    if (!stat.isDirectory()) continue;
-    fs.cpSync(srcDir, path.join(context.skillsDst, skillDir), {
-      recursive: true,
-    });
+  for (const [skillName, skillContent] of Object.entries(RUNTIME_SKILLS)) {
+    const skillDir = path.join(context.skillsDst, skillName);
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `${skillContent.trim()}\n`);
   }
 }
 
@@ -378,9 +372,18 @@ function loadAgentInstructions(
   const contextSections: string[] = [];
   const candidatePaths = instructionPathsFor(context.groupDir);
 
+  contextSections.push('# Built-in Instructions');
+  contextSections.push('');
+  contextSections.push(
+    input.isMain
+      ? renderMainAgentInstructions(input.assistantName || 'Assistant')
+      : renderGlobalAgentInstructions(input.assistantName || 'Assistant'),
+  );
+  contextSections.push('');
+
   if (input.isMain) {
     candidatePaths.push(...instructionPathsFor(PROJECT_ROOT));
-  } else {
+  } else if (fs.existsSync(context.globalDir)) {
     candidatePaths.push(...instructionPathsFor(context.globalDir));
   }
 

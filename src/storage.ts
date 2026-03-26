@@ -1,8 +1,7 @@
-import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
+import { ASSISTANT_NAME, DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 import {
   _clearInMemoryStateForTests,
@@ -11,10 +10,6 @@ import {
   getRegisteredGroupValue,
   getRouterStateValue,
   getSessionValue,
-  hasChatsStore,
-  hasRegisteredGroupsStore,
-  hasRouterStateStore,
-  hasSessionsStore,
   readAllChatsState,
   readAllRegisteredGroupsState,
   readAllSessionsState,
@@ -22,10 +17,6 @@ import {
   setRegisteredGroupValue,
   setRouterStateValue,
   setSessionValue,
-  writeAllChatsState,
-  writeAllRegisteredGroupsState,
-  writeAllRouterState,
-  writeAllSessionsState,
 } from './state-files.js';
 import {
   NewMessage,
@@ -54,7 +45,6 @@ interface StoredMessage {
 const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 const SCHEDULED_TASKS_FILE = path.join(DATA_DIR, 'scheduled_tasks.json');
 const TASK_RUN_LOGS_FILE = path.join(DATA_DIR, 'task_run_logs.json');
-const LEGACY_DB_PATH = path.join(STORE_DIR, 'messages.db');
 
 let inMemoryJsonStore: InMemoryJsonStore | null = null;
 
@@ -316,244 +306,6 @@ function writeTaskRunLogsStore(logs: TaskRunLog[]): void {
   atomicWriteJson(TASK_RUN_LOGS_FILE, normalized);
 }
 
-function tryReadLegacySqliteRows<T>(query: string): T[] {
-  if (!fs.existsSync(LEGACY_DB_PATH)) {
-    return [];
-  }
-
-  try {
-    const output = execFileSync('sqlite3', ['-json', LEGACY_DB_PATH, query], {
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
-
-    if (!output) {
-      return [];
-    }
-
-    const parsed = JSON.parse(output);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch (err) {
-    logger.warn({ err, query }, 'Legacy SQLite migration skipped for query');
-    return [];
-  }
-}
-
-function migrateLegacyMessagesToJson(): void {
-  if (
-    inMemoryJsonStore ||
-    fs.existsSync(MESSAGES_FILE) ||
-    !fs.existsSync(LEGACY_DB_PATH)
-  ) {
-    return;
-  }
-
-  const rows = tryReadLegacySqliteRows<{
-    id: string;
-    chat_jid: string;
-    sender: string;
-    sender_name: string;
-    content: string;
-    timestamp: string;
-    is_from_me: number | boolean | null;
-    is_bot_message: number | boolean | null;
-  }>(
-    'SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, COALESCE(is_bot_message, 0) AS is_bot_message FROM messages ORDER BY timestamp',
-  );
-
-  if (rows.length === 0) {
-    return;
-  }
-
-  writeMessagesStore(
-    rows.map((row) => ({
-      id: row.id,
-      chat_jid: row.chat_jid,
-      sender: row.sender,
-      sender_name: row.sender_name,
-      content: row.content,
-      timestamp: row.timestamp,
-      is_from_me: row.is_from_me === 1 || row.is_from_me === true,
-      is_bot_message:
-        row.is_bot_message === 1 ||
-        row.is_bot_message === true ||
-        row.content.startsWith(`${ASSISTANT_NAME}:`),
-    })),
-  );
-}
-
-function migrateLegacyTasksToJson(): void {
-  if (
-    inMemoryJsonStore ||
-    fs.existsSync(SCHEDULED_TASKS_FILE) ||
-    !fs.existsSync(LEGACY_DB_PATH)
-  ) {
-    return;
-  }
-
-  const rows = tryReadLegacySqliteRows<{
-    id: string;
-    group_folder: string;
-    chat_jid: string;
-    prompt: string;
-    schedule_type: 'cron' | 'interval' | 'once';
-    schedule_value: string;
-    context_mode: 'group' | 'isolated' | null;
-    next_run: string | null;
-    last_run: string | null;
-    last_result: string | null;
-    status: 'active' | 'paused' | 'completed';
-    created_at: string;
-  }>(
-    "SELECT id, group_folder, chat_jid, prompt, schedule_type, schedule_value, COALESCE(context_mode, 'isolated') AS context_mode, next_run, last_run, last_result, status, created_at FROM scheduled_tasks",
-  );
-
-  if (rows.length === 0) {
-    return;
-  }
-
-  writeScheduledTasksStore(
-    Object.fromEntries(
-      rows.map((row) => [
-        row.id,
-        {
-          id: row.id,
-          group_folder: row.group_folder,
-          chat_jid: row.chat_jid,
-          prompt: row.prompt,
-          schedule_type: row.schedule_type,
-          schedule_value: row.schedule_value,
-          context_mode: row.context_mode === 'group' ? 'group' : 'isolated',
-          next_run: row.next_run,
-          last_run: row.last_run,
-          last_result: row.last_result,
-          status: row.status,
-          created_at: row.created_at,
-        } satisfies ScheduledTask,
-      ]),
-    ),
-  );
-}
-
-function migrateLegacyTaskRunLogsToJson(): void {
-  if (
-    inMemoryJsonStore ||
-    fs.existsSync(TASK_RUN_LOGS_FILE) ||
-    !fs.existsSync(LEGACY_DB_PATH)
-  ) {
-    return;
-  }
-
-  const rows = tryReadLegacySqliteRows<TaskRunLog>(
-    'SELECT task_id, run_at, duration_ms, status, result, error FROM task_run_logs ORDER BY run_at',
-  );
-
-  if (rows.length === 0) {
-    return;
-  }
-
-  writeTaskRunLogsStore(rows);
-}
-
-function migrateLegacyStateToJson(): void {
-  if (!fs.existsSync(LEGACY_DB_PATH) || inMemoryJsonStore) {
-    return;
-  }
-
-  if (!hasChatsStore()) {
-    const rows = tryReadLegacySqliteRows<{
-      jid: string;
-      name: string | null;
-      last_message_time: string | null;
-      channel: string | null;
-      is_group: number | boolean | null;
-    }>('SELECT jid, name, last_message_time, channel, is_group FROM chats');
-
-    if (rows.length > 0) {
-      writeAllChatsState(
-        Object.fromEntries(
-          rows
-            .filter((row) => typeof row.last_message_time === 'string')
-            .map((row) => [
-              row.jid,
-              {
-                jid: row.jid,
-                name: row.name || row.jid,
-                last_message_time: row.last_message_time || '',
-                channel: row.channel || '',
-                is_group: row.is_group === 1 || row.is_group === true ? 1 : 0,
-              },
-            ]),
-        ),
-      );
-    }
-  }
-
-  if (!hasRouterStateStore()) {
-    const rows = tryReadLegacySqliteRows<{ key: string; value: string }>(
-      'SELECT key, value FROM router_state',
-    );
-
-    if (rows.length > 0) {
-      writeAllRouterState(Object.fromEntries(rows.map((row) => [row.key, row.value])));
-    }
-  }
-
-  if (!hasSessionsStore()) {
-    const rows = tryReadLegacySqliteRows<{ group_folder: string; session_id: string }>(
-      'SELECT group_folder, session_id FROM sessions',
-    );
-
-    if (rows.length > 0) {
-      writeAllSessionsState(
-        Object.fromEntries(rows.map((row) => [row.group_folder, row.session_id])),
-      );
-    }
-  }
-
-  if (!hasRegisteredGroupsStore()) {
-    const rows = tryReadLegacySqliteRows<{
-      jid: string;
-      name: string;
-      folder: string;
-      trigger_pattern: string;
-      added_at: string;
-      container_config: string | null;
-      requires_trigger: number | boolean | null;
-      is_main: number | boolean | null;
-    }>('SELECT * FROM registered_groups');
-
-    if (rows.length > 0) {
-      const groups: Record<string, RegisteredGroup> = {};
-      for (const row of rows) {
-        groups[row.jid] = {
-          name: row.name,
-          folder: row.folder,
-          trigger: row.trigger_pattern,
-          added_at: row.added_at,
-          containerConfig: row.container_config
-            ? (JSON.parse(row.container_config) as RegisteredGroup['containerConfig'])
-            : undefined,
-          requiresTrigger:
-            row.requires_trigger === null || row.requires_trigger === undefined
-              ? undefined
-              : row.requires_trigger === 1 || row.requires_trigger === true,
-          isMain:
-            row.is_main === 1 || row.is_main === true ? true : undefined,
-        };
-      }
-      writeAllRegisteredGroupsState(groups);
-    }
-  }
-}
-
-function migrateLegacySqliteToJson(): void {
-  migrateLegacyMessagesToJson();
-  migrateLegacyTasksToJson();
-  migrateLegacyTaskRunLogsToJson();
-  migrateLegacyStateToJson();
-}
-
 function filterUserMessages(
   messages: StoredMessage[],
   botPrefix: string,
@@ -576,15 +328,13 @@ function filterUserMessages(
     }));
 }
 
-export function initDatabase(): void {
+export function initStorage(): void {
   _clearInMemoryStateForTests();
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  migrateLegacySqliteToJson();
   ensureJsonStoreFiles();
 }
 
-/** @internal - for tests only. Creates fresh in-memory JSON storage. */
-export function _initTestDatabase(): void {
+export function _initTestStorage(): void {
   inMemoryJsonStore = {
     messages: [],
     scheduledTasks: {},
@@ -593,10 +343,6 @@ export function _initTestDatabase(): void {
   _initInMemoryStateForTests();
 }
 
-/**
- * Store chat metadata only (no message content).
- * Used for all chats to enable group discovery without storing sensitive content.
- */
 export function storeChatMetadata(
   chatJid: string,
   timestamp: string,
@@ -692,19 +438,6 @@ export function storeMessage(msg: NewMessage): void {
   }
 
   writeMessagesStore(messages);
-}
-
-export function storeMessageDirect(msg: {
-  id: string;
-  chat_jid: string;
-  sender: string;
-  sender_name: string;
-  content: string;
-  timestamp: string;
-  is_from_me: boolean;
-  is_bot_message?: boolean;
-}): void {
-  storeMessage(msg);
 }
 
 export function getNewMessages(

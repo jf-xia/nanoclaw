@@ -30,13 +30,13 @@ import {
   getMessagesSince,
   getNewMessages,
   getRouterState,
-  initDatabase,
+  initStorage,
   setRegisteredGroup,
   setRouterState,
   setSession,
   storeChatMetadata,
   storeMessage,
-} from './db.js';
+} from './storage.js';
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
@@ -95,7 +95,7 @@ function loadState(): void {
   try {
     lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
   } catch {
-    logger.warn('Corrupted last_agent_timestamp in DB, resetting');
+    logger.warn('Corrupted last_agent_timestamp in storage, resetting');
     lastAgentTimestamp = {};
   }
   sessions = getAllSessions();
@@ -412,7 +412,7 @@ async function startMessageLoop(): Promise<void> {
           const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
 
           // For non-main groups, only act on trigger messages.
-          // Non-trigger messages accumulate in DB and get pulled as
+          // Non-trigger messages accumulate in storage and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
             const allowlistCfg = loadSenderAllowlist();
@@ -482,7 +482,7 @@ function recoverPendingMessages(): void {
 }
 
 async function main(): Promise<void> {
-  initDatabase();
+  initStorage();
   logger.info('Storage initialized');
   loadState();
 

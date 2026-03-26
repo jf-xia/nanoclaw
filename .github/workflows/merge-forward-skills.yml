@@ -154,7 +154,6 @@ jobs:
           github-token: ${{ secrets.FORK_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const forks = [
-              'nanoclaw-whatsapp',
               'nanoclaw-telegram',
               'nanoclaw-discord',
               'nanoclaw-slack',

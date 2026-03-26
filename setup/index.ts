@@ -9,10 +9,16 @@ import path from 'path';
 
 import {
   DEFAULT_MOUNT_ALLOWLIST,
+  ASSISTANT_NAME,
 } from '../src/config.js';
 import { readEnvFile } from '../src/env.js';
 import { isValidGroupFolder } from '../src/group-folder.js';
 import { logger } from '../src/logger.js';
+import {
+  renderGlobalAgentInstructions,
+  renderMainAgentInstructions,
+} from '../src/runtime-assets/agents.js';
+import { renderLaunchdPlist } from '../src/runtime-assets/service.js';
 import {
   hasRegisteredGroupsStore,
   readAllChatsState,
@@ -349,25 +355,17 @@ async function runRegisterStep(args: string[]): Promise<void> {
     recursive: true,
   });
 
+  fs.writeFileSync(
+    path.join(projectRoot, 'groups', parsed.folder, 'AGENTS.md'),
+    `${(
+      parsed.isMain
+        ? renderMainAgentInstructions(parsed.assistantName)
+        : renderGlobalAgentInstructions(parsed.assistantName)
+    ).trim()}\n`,
+  );
+
   let nameUpdated = false;
   if (parsed.assistantName !== 'Andy') {
-    const mdFiles = [
-      path.join(projectRoot, 'groups', 'global', 'AGENTS.md'),
-      path.join(projectRoot, 'groups', parsed.folder, 'AGENTS.md'),
-    ];
-
-    for (const mdFile of mdFiles) {
-      if (fs.existsSync(mdFile)) {
-        let content = fs.readFileSync(mdFile, 'utf-8');
-        content = content.replace(/^# Andy$/m, `# ${parsed.assistantName}`);
-        content = content.replace(
-          /You are Andy/g,
-          `You are ${parsed.assistantName}`,
-        );
-        fs.writeFileSync(mdFile, content);
-      }
-    }
-
     const envFile = path.join(projectRoot, '.env');
     if (fs.existsSync(envFile)) {
       let envContent = fs.readFileSync(envFile, 'utf-8');
@@ -450,37 +448,9 @@ function generatePlist(
   nodePath: string,
   projectRoot: string,
   homeDir: string,
+  assistantName: string,
 ): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.nanoclaw</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${nodePath}</string>
-        <string>${projectRoot}/dist/index.js</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>${projectRoot}</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:${homeDir}/.local/bin</string>
-        <key>HOME</key>
-        <string>${homeDir}</string>
-    </dict>
-    <key>StandardOutPath</key>
-    <string>${projectRoot}/logs/nanoclaw.log</string>
-    <key>StandardErrorPath</key>
-    <string>${projectRoot}/logs/nanoclaw.error.log</string>
-</dict>
-</plist>`;
+  return renderLaunchdPlist(nodePath, projectRoot, homeDir, assistantName);
 }
 
 function generateSystemdUnit(
@@ -561,7 +531,10 @@ function setupLaunchd(projectRoot: string, nodePath: string, homeDir: string): v
     'com.nanoclaw.plist',
   );
   fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-  fs.writeFileSync(plistPath, generatePlist(nodePath, projectRoot, homeDir));
+  fs.writeFileSync(
+    plistPath,
+    generatePlist(nodePath, projectRoot, homeDir, ASSISTANT_NAME),
+  );
 
   try {
     execSync(`launchctl load ${JSON.stringify(plistPath)}`, {

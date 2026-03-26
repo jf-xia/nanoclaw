@@ -17,12 +17,12 @@ npm run format         # Prettier write
 
 ## Architecture
 
-Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Runtime storage is JSON-backed under `data/` (`messages.json`, `scheduled_tasks.json`, `task_run_logs.json`, `chats.json`, `router_state.json`, `sessions.json`, `registered_groups.json`). Messages are routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
+Single Node.js process. Channels (Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Runtime storage is JSON-backed under `data/` (`messages.json`, `scheduled_tasks.json`, `task_run_logs.json`, `chats.json`, `router_state.json`, `sessions.json`, `registered_groups.json`). Messages are routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
 
 **Message flow:**
 
 ```
-Channel → db.storeMessage() → message loop polls → GroupQueue
+Channel → storage.storeMessage() → message loop polls → GroupQueue
   → container-runner spawns local agent process
     → Copilot CLI agent runs with group-scoped runtime dirs
     → agent writes output with sentinel markers
@@ -40,7 +40,7 @@ Channel → db.storeMessage() → message loop polls → GroupQueue
 | `src/index.ts` | Orchestrator: channels, message loop, agent invocation |
 | `src/container-runner.ts` | Spawns local runners, prepares runtime dirs, parses output |
 | `src/ipc.ts` | IPC watcher: processes task/message files from local runners |
-| `src/db.ts` | JSON-backed message/task storage plus legacy SQLite import bridge |
+| `src/storage.ts` | JSON-backed message and task storage |
 | `src/state-files.ts` | JSON-backed runtime state for chats, router state, sessions, and registered groups |
 | `src/group-queue.ts` | Concurrency manager (default max 5 active runners) |
 | `src/router.ts` | XML message formatting, outbound routing |
@@ -63,7 +63,7 @@ logger.error({ err, group: name }, 'Agent failed');
 ```
 
 ### Storage
-`src/db.ts` stores messages, scheduled tasks, and task run logs as JSON files in `data/`. Runtime state such as discovered chats, router cursors, Copilot session IDs, and registered groups is stored in separate JSON files via `src/state-files.ts`. Preserve the existing storage API and use atomic temp-file-plus-rename writes for on-disk updates.
+`src/storage.ts` stores messages, scheduled tasks, and task run logs as JSON files in `data/`. Runtime state such as discovered chats, router cursors, Copilot session IDs, and registered groups is stored in separate JSON files via `src/state-files.ts`. Preserve the existing storage API and use atomic temp-file-plus-rename writes for on-disk updates.
 
 ```ts
 storeMessage(message);
@@ -98,7 +98,7 @@ New features go in **skills**, not in core source. Four types:
 | **Feature** | `.copilot/skills/<name>/` + `skill/<name>` branch | New channel or capability |
 | **Utility** | `.copilot/skills/<name>/` (self-contained) | Standalone tool (e.g., CLI) |
 | **Operational** | `.copilot/skills/<name>/` (instructions only) | Workflows, guides, setup |
-| **Runtime** | `container/skills/<name>/` | Instructions loaded inside agent at runtime |
+| **Runtime** | `src/runtime-assets/*` | Built-in instructions and runtime skill templates loaded into the agent environment |
 
 All skills use a SKILL.md with YAML frontmatter:
 ```yaml
@@ -119,7 +119,7 @@ Key env vars: `ASSISTANT_NAME` (trigger prefix), `CONTAINER_TIMEOUT`, `MAX_CONCU
 
 ## Testing
 
-Vitest. Tests live alongside source as `*.test.ts`. Use `_initTestDatabase()` from `src/db.ts` for isolated in-memory storage in tests. Skill tests have a separate config (`vitest.skills.config.ts`) and live in `.copilot/skills/**/tests/`.
+Vitest. Tests live alongside source as `*.test.ts`. Use `_initTestStorage()` from `src/storage.ts` for isolated in-memory storage in tests. Skill tests have a separate config (`vitest.skills.config.ts`) and live in `.copilot/skills/**/tests/`.
 
 ## PR Guidelines
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { _initTestDatabase, createTask, getTaskById } from './db.js';
+import { _initTestStorage, createTask, getTaskById } from './storage.js';
 import {
   _resetSchedulerLoopForTests,
   computeNextRun,
@@ -9,7 +9,7 @@ import {
 
 describe('task scheduler', () => {
   beforeEach(() => {
-    _initTestDatabase();
+    _initTestStorage();
     _resetSchedulerLoopForTests();
     vi.useFakeTimers();
   });
