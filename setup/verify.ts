@@ -100,6 +100,12 @@ export async function run(_args: string[]): Promise<void> {
     'SLACK_BOT_TOKEN',
     'SLACK_APP_TOKEN',
     'DISCORD_BOT_TOKEN',
+    'IMAP_HOST',
+    'IMAP_USER',
+    'IMAP_PASS',
+    'SMTP_HOST',
+    'SMTP_USER',
+    'SMTP_PASS',
   ]);
 
   const channelAuth: Record<string, string> = {};
@@ -122,6 +128,16 @@ export async function run(_args: string[]): Promise<void> {
   }
   if (process.env.DISCORD_BOT_TOKEN || envVars.DISCORD_BOT_TOKEN) {
     channelAuth.discord = 'configured';
+  }
+  if (
+    (process.env.IMAP_HOST || envVars.IMAP_HOST) &&
+    (process.env.IMAP_USER || envVars.IMAP_USER) &&
+    (process.env.IMAP_PASS || envVars.IMAP_PASS) &&
+    (process.env.SMTP_HOST || envVars.SMTP_HOST) &&
+    (process.env.SMTP_USER || envVars.SMTP_USER) &&
+    (process.env.SMTP_PASS || envVars.SMTP_PASS)
+  ) {
+    channelAuth.email = 'configured';
   }
 
   const configuredChannels = Object.keys(channelAuth);

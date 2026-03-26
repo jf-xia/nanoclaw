@@ -65,7 +65,7 @@ Then run `/setup`. Copilot CLI handles dependencies, authentication, local agent
 
 ## What It Supports
 
-- **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with workflows like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
+- **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, Gmail, or a plain IMAP/SMTP mailbox. Run one or many at the same time.
 - **Scoped group context** - Each group has its own `AGENTS.md` memory, working directory, and isolated Copilot session state.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Copilot and can message you back
@@ -90,6 +90,33 @@ From the main channel (your self-chat), you can manage groups and tasks:
 @Andy pause the Monday briefing task
 @Andy join the Family Chat group
 ```
+
+## Email Channel
+
+NanoClaw can also use a regular email account as a channel. When `IMAP_*` and `SMTP_*` variables are present, the app loads the built-in `email` channel automatically.
+
+Configure your `.env` like this:
+
+```bash
+IMAP_HOST=imap.example.com
+IMAP_PORT=993
+IMAP_USER=bot@example.com
+IMAP_PASS=app-password-or-mail-password
+IMAP_TLS=true
+
+SMTP_HOST=smtp.example.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=bot@example.com
+SMTP_PASS=app-password-or-mail-password
+```
+
+Notes:
+
+- Email chats use JIDs in the form `email:alice@example.com`
+- The channel polls unread mail from `INBOX`
+- Incoming mail stores the subject in the message body as `[Subject] ...`
+- Replies go out over SMTP and keep the original email thread metadata when available
 
 ## Customizing
 
