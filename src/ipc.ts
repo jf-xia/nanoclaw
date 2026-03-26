@@ -3,8 +3,8 @@ import path from 'path';
 
 import { CronExpressionParser } from 'cron-parser';
 
+import { AvailableGroup } from './agent-snapshots.js';
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
-import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './storage.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
@@ -20,7 +20,6 @@ export interface IpcDeps {
     groupFolder: string,
     isMain: boolean,
     availableGroups: AvailableGroup[],
-    registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
 }
@@ -411,7 +410,6 @@ export async function processTaskIpc(
           sourceGroup,
           true,
           availableGroups,
-          new Set(Object.keys(registeredGroups)),
         );
       } else {
         logger.warn(

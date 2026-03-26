@@ -1,12 +1,9 @@
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
+import { syncAgentSnapshots } from './agent-snapshots.js';
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
-import {
-  ContainerOutput,
-  runContainerAgent,
-  writeTasksSnapshot,
-} from './container-runner.js';
+import { ContainerOutput, runContainerAgent } from './container-runner.js';
 import {
   getAllTasks,
   getDueTasks,
@@ -127,22 +124,12 @@ async function runTask(
     return;
   }
 
-  // Update tasks snapshot for container to read (filtered by group)
   const isMain = group.isMain === true;
-  const tasks = getAllTasks();
-  writeTasksSnapshot(
-    task.group_folder,
+  syncAgentSnapshots({
+    groupFolder: task.group_folder,
     isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    })),
-  );
+    tasks: getAllTasks(),
+  });
 
   let result: string | null = null;
   let error: string | null = null;
