@@ -88,7 +88,9 @@ Main has read-only access to the project and read-write access to its group fold
 
 Key paths inside the runtime workspace:
 - `/workspace/project/store/messages.db` - SQLite database
-- `/workspace/project/store/messages.db` (registered_groups table) - Group config
+- `/workspace/project/data/registered_groups.json` - Registered group config
+- `/workspace/project/data/sessions.json` - Persisted Copilot session IDs
+- `/workspace/project/data/router_state.json` - Message loop cursors and router state
 - `/workspace/project/groups/` - All group folders
 
 ---
@@ -123,7 +125,7 @@ echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).jso
 
 Then wait a moment and re-read `available_groups.json`.
 
-**Fallback**: Query the SQLite database directly:
+**Fallback**: Query the SQLite database directly for discovered chats only:
 
 ```bash
 sqlite3 /workspace/project/store/messages.db "
@@ -137,7 +139,7 @@ sqlite3 /workspace/project/store/messages.db "
 
 ### Registered Groups Config
 
-Groups are registered in the SQLite `registered_groups` table:
+Groups are registered in `/workspace/project/data/registered_groups.json`:
 
 ```json
 {
@@ -167,7 +169,7 @@ Fields:
 
 ### Adding a Group
 
-1. Query the database to find the group's JID
+1. Query available groups to find the group's JID
 2. Use the `register_group` MCP tool with the JID, name, folder, and trigger
 3. Optionally include `containerConfig` for additional mounts
 4. The group folder is created automatically: `/workspace/project/groups/{folder-name}/`
@@ -233,7 +235,7 @@ If the user wants to set up an allowlist, edit the embedded sender allowlist in 
 ```
 
 Notes:
-- Your own messages (`is_from_me`) explicitly bypass the allowlist in trigger checks. Bot messages are filtered out by the database query before trigger evaluation, so they never reach the allowlist.
+- Your own messages (`is_from_me`) explicitly bypass the allowlist in trigger checks. Bot messages are filtered out by the message query before trigger evaluation, so they never reach the allowlist.
 - If the embedded config is invalid, all senders are allowed (fail-open)
 - The config is in the project at `src/config.ts`
 

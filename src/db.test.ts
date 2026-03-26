@@ -6,10 +6,16 @@ import {
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
+  getAllSessions,
   getMessagesSince,
   getNewMessages,
+  getRegisteredGroup,
+  getRouterState,
+  getSession,
   getTaskById,
   setRegisteredGroup,
+  setRouterState,
+  setSession,
   storeChatMetadata,
   storeMessage,
   updateTask,
@@ -480,5 +486,57 @@ describe('registered group isMain', () => {
     const group = groups['group@g.us'];
     expect(group).toBeDefined();
     expect(group.isMain).toBeUndefined();
+  });
+
+  it('returns a single registered group by jid', () => {
+    setRegisteredGroup('group@g.us', {
+      name: 'Family Chat',
+      folder: 'whatsapp_family-chat',
+      trigger: '@Andy',
+      added_at: '2024-01-01T00:00:00.000Z',
+      requiresTrigger: false,
+    });
+
+    const group = getRegisteredGroup('group@g.us');
+    expect(group).toEqual({
+      jid: 'group@g.us',
+      name: 'Family Chat',
+      folder: 'whatsapp_family-chat',
+      trigger: '@Andy',
+      added_at: '2024-01-01T00:00:00.000Z',
+      requiresTrigger: false,
+    });
+  });
+});
+
+describe('router state', () => {
+  it('stores and retrieves router state from the JSON-backed state layer', () => {
+    expect(getRouterState('last_timestamp')).toBeUndefined();
+
+    setRouterState('last_timestamp', '2024-01-01T00:00:00.000Z');
+    setRouterState(
+      'last_agent_timestamp',
+      JSON.stringify({ 'group@g.us': '2024-01-01T00:00:05.000Z' }),
+    );
+
+    expect(getRouterState('last_timestamp')).toBe('2024-01-01T00:00:00.000Z');
+    expect(getRouterState('last_agent_timestamp')).toBe(
+      JSON.stringify({ 'group@g.us': '2024-01-01T00:00:05.000Z' }),
+    );
+  });
+});
+
+describe('sessions state', () => {
+  it('stores and lists sessions from the JSON-backed state layer', () => {
+    expect(getSession('main')).toBeUndefined();
+
+    setSession('main', 'session-1');
+    setSession('ops', 'session-2');
+
+    expect(getSession('main')).toBe('session-1');
+    expect(getAllSessions()).toEqual({
+      main: 'session-1',
+      ops: 'session-2',
+    });
   });
 });

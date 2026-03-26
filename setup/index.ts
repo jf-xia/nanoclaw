@@ -2,21 +2,22 @@
  * Setup CLI entry point.
  * Usage: npx tsx setup/index.ts --step <name> [args...]
  */
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import Database from 'better-sqlite3';
-
 import {
   DEFAULT_MOUNT_ALLOWLIST,
-  STORE_DIR,
 } from '../src/config.js';
-import { initDatabase, setRegisteredGroup } from '../src/db.js';
 import { readEnvFile } from '../src/env.js';
 import { isValidGroupFolder } from '../src/group-folder.js';
 import { logger } from '../src/logger.js';
+import {
+  hasRegisteredGroupsStore,
+  readAllRegisteredGroupsState,
+  writeAllRegisteredGroupsState,
+} from '../src/state-files.js';
 
 type Platform = 'macos' | 'linux' | 'unknown';
 type ServiceManager = 'launchd' | 'systemd' | 'none';
@@ -41,8 +42,48 @@ const STEPS: Record<string, SetupStep> = {
   mounts: runMountsStep,
   service: runServiceStep,
   verify: runVerifyStep,
-  'whatsapp-auth': runWhatsAppAuthStep,
 };
+
+function listRegisteredGroups(): Array<{
+  jid: string;
+  group: ReturnType<typeof readAllRegisteredGroupsState>[string];
+}> {
+  return Object.entries(readAllRegisteredGroupsState())
+    .map(([jid, group]) => ({ jid, group }))
+    .sort((left, right) =>
+      right.group.added_at.localeCompare(left.group.added_at),
+    );
+}
+
+function hasConfiguredChannel(): boolean {
+  const envVars = readEnvFile([
+    'TELEGRAM_BOT_TOKEN',
+    'SLACK_BOT_TOKEN',
+    'SLACK_APP_TOKEN',
+    'DISCORD_BOT_TOKEN',
+    'IMAP_HOST',
+    'IMAP_USER',
+    'IMAP_PASS',
+    'SMTP_HOST',
+    'SMTP_USER',
+    'SMTP_PASS',
+  ]);
+
+  return Boolean(
+    process.env.TELEGRAM_BOT_TOKEN ||
+      envVars.TELEGRAM_BOT_TOKEN ||
+      ((process.env.SLACK_BOT_TOKEN || envVars.SLACK_BOT_TOKEN) &&
+        (process.env.SLACK_APP_TOKEN || envVars.SLACK_APP_TOKEN)) ||
+      process.env.DISCORD_BOT_TOKEN ||
+      envVars.DISCORD_BOT_TOKEN ||
+      (((process.env.IMAP_HOST || envVars.IMAP_HOST) &&
+        (process.env.IMAP_USER || envVars.IMAP_USER) &&
+        (process.env.IMAP_PASS || envVars.IMAP_PASS) &&
+        (process.env.SMTP_HOST || envVars.SMTP_HOST) &&
+        (process.env.SMTP_USER || envVars.SMTP_USER) &&
+        (process.env.SMTP_PASS || envVars.SMTP_PASS))),
+  );
+}
 
 function emitStatus(
   step: string,
@@ -103,15 +144,6 @@ function getServiceManager(): ServiceManager {
   return 'none';
 }
 
-function commandExists(name: string): boolean {
-  try {
-    execSync(`command -v ${name}`, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function getNodePath(): string {
   try {
     return execSync('command -v node', { encoding: 'utf-8' }).trim();
@@ -126,7 +158,7 @@ function parseRegisterArgs(args: string[]): RegisterArgs {
     name: '',
     trigger: '',
     folder: '',
-    channel: 'whatsapp',
+    channel: 'email',
     requiresTrigger: true,
     isMain: false,
     assistantName: 'Andy',
@@ -198,42 +230,19 @@ async function runEnvironmentStep(_args: string[]): Promise<void> {
   const platform = getPlatform();
   const wsl = isWSL();
   const headless = isHeadless();
-  const agentRunnerDist = path.join(
-    projectRoot,
-    'container',
-    'agent-runner',
-    'dist',
-    'index.js',
-  );
-  const agentRunnerReady = fs.existsSync(agentRunnerDist);
-  const hasEnv = fs.existsSync(path.join(projectRoot, '.env'));
-  const authDir = path.join(projectRoot, 'store', 'auth');
-  const hasAuth = fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0;
 
-  let hasRegisteredGroups = false;
-  if (fs.existsSync(path.join(projectRoot, 'data', 'registered_groups.json'))) {
-    hasRegisteredGroups = true;
-  } else {
-    const dbPath = path.join(STORE_DIR, 'messages.db');
-    if (fs.existsSync(dbPath)) {
-      try {
-        const db = new Database(dbPath, { readonly: true });
-        const row = db
-          .prepare('SELECT COUNT(*) as count FROM registered_groups')
-          .get() as { count: number };
-        hasRegisteredGroups = row.count > 0;
-        db.close();
-      } catch {
-        hasRegisteredGroups = false;
-      }
-    }
-  }
+  const runtimeEntry = path.join(projectRoot, 'dist', 'index.js');
+  const agentRunnerReady = fs.existsSync(runtimeEntry);
+  const hasEnv = fs.existsSync(path.join(projectRoot, '.env'));
+  const hasAuth = hasConfiguredChannel();
+  const hasRegisteredGroups = hasRegisteredGroupsStore();
 
   emitStatus('CHECK_ENVIRONMENT', {
     PLATFORM: platform,
     IS_WSL: wsl,
     IS_HEADLESS: headless,
     AGENT_RUNNER_READY: agentRunnerReady,
+    BUILD_ENTRY: runtimeEntry,
     HAS_ENV: hasEnv,
     HAS_AUTH: hasAuth,
     HAS_REGISTERED_GROUPS: hasRegisteredGroups,
@@ -244,19 +253,18 @@ async function runEnvironmentStep(_args: string[]): Promise<void> {
 
 async function runContainerStep(_args: string[]): Promise<void> {
   const projectRoot = process.cwd();
-  const agentRunnerDir = path.join(projectRoot, 'container', 'agent-runner');
-  const distEntry = path.join(agentRunnerDir, 'dist', 'index.js');
+  const distEntry = path.join(projectRoot, 'dist', 'index.js');
 
   let buildOk = false;
-  logger.info('Building agent-runner');
+  logger.info('Building project runtime');
   try {
     execSync('npm run build', {
-      cwd: agentRunnerDir,
+      cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     buildOk = true;
   } catch (err) {
-    logger.error({ err }, 'Agent-runner build failed');
+    logger.error({ err }, 'Project build failed');
   }
 
   const verifyOk = buildOk && fs.existsSync(distEntry);
@@ -273,192 +281,33 @@ async function runContainerStep(_args: string[]): Promise<void> {
 }
 
 async function runGroupsStep(args: string[]): Promise<void> {
-  const projectRoot = process.cwd();
   const { list, limit } = parseGroupArgs(args);
+  const groups = listRegisteredGroups();
 
   if (list) {
-    const dbPath = path.join(STORE_DIR, 'messages.db');
-    if (!fs.existsSync(dbPath)) {
-      console.error('ERROR: database not found');
-      process.exit(1);
-    }
-
-    const db = new Database(dbPath, { readonly: true });
-    const rows = db
-      .prepare(
-        `SELECT jid, name FROM chats
-         WHERE jid LIKE '%@g.us' AND jid <> '__group_sync__' AND name <> jid
-         ORDER BY last_message_time DESC
-         LIMIT ?`,
-      )
-      .all(limit) as Array<{ jid: string; name: string }>;
-    db.close();
-
-    for (const row of rows) {
-      console.log(`${row.jid}|${row.name}`);
+    for (const { jid, group } of groups.slice(0, limit)) {
+      console.log(`${jid}|${group.name}`);
     }
     return;
   }
 
-  const authDir = path.join(projectRoot, 'store', 'auth');
-  const hasWhatsAppAuth =
-    fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0;
-
-  if (!hasWhatsAppAuth) {
-    emitStatus('SYNC_GROUPS', {
-      BUILD: 'skipped',
-      SYNC: 'skipped',
-      GROUPS_IN_DB: 0,
-      REASON: 'whatsapp_not_configured',
-      STATUS: 'success',
-      LOG: 'logs/setup.log',
-    });
-    return;
-  }
-
-  let buildOk = false;
-  try {
-    execSync('npm run build', {
-      cwd: projectRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    buildOk = true;
-  } catch {
-    emitStatus('SYNC_GROUPS', {
-      BUILD: 'failed',
-      SYNC: 'skipped',
-      GROUPS_IN_DB: 0,
-      STATUS: 'failed',
-      ERROR: 'build_failed',
-      LOG: 'logs/setup.log',
-    });
-    process.exit(1);
-  }
-
-  let syncOk = false;
-  try {
-    const syncScript = `
-import makeWASocket, { useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers } from '@whiskeysockets/baileys';
-import pino from 'pino';
-import path from 'path';
-import fs from 'fs';
-import Database from 'better-sqlite3';
-
-const logger = pino({ level: 'silent' });
-const authDir = path.join('store', 'auth');
-const dbPath = path.join('store', 'messages.db');
-
-if (!fs.existsSync(authDir)) {
-  console.error('NO_AUTH');
-  process.exit(1);
-}
-
-const db = new Database(dbPath);
-db.pragma('journal_mode = WAL');
-db.exec('CREATE TABLE IF NOT EXISTS chats (jid TEXT PRIMARY KEY, name TEXT, last_message_time TEXT)');
-
-const upsert = db.prepare(
-  'INSERT INTO chats (jid, name, last_message_time) VALUES (?, ?, ?) ON CONFLICT(jid) DO UPDATE SET name = excluded.name'
-);
-
-const { state, saveCreds } = await useMultiFileAuthState(authDir);
-
-const sock = makeWASocket({
-  auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
-  printQRInTerminal: false,
-  logger,
-  browser: Browsers.macOS('Chrome'),
-});
-
-const timeout = setTimeout(() => {
-  console.error('TIMEOUT');
-  process.exit(1);
-}, 30000);
-
-sock.ev.on('creds.update', saveCreds);
-
-sock.ev.on('connection.update', async (update) => {
-  if (update.connection === 'open') {
-    try {
-      const groups = await sock.groupFetchAllParticipating();
-      const now = new Date().toISOString();
-      let count = 0;
-      for (const [jid, metadata] of Object.entries(groups)) {
-        if (metadata.subject) {
-          upsert.run(jid, metadata.subject, now);
-          count++;
-        }
-      }
-      console.log('SYNCED:' + count);
-    } catch (err) {
-      console.error('FETCH_ERROR:' + err.message);
-    } finally {
-      clearTimeout(timeout);
-      sock.end(undefined);
-      db.close();
-      process.exit(0);
-    }
-  } else if (update.connection === 'close') {
-    clearTimeout(timeout);
-    console.error('CONNECTION_CLOSED');
-    process.exit(1);
-  }
-});
-`;
-
-    const tmpScript = path.join(projectRoot, '.tmp-group-sync.mjs');
-    fs.writeFileSync(tmpScript, syncScript, 'utf-8');
-    try {
-      const output = execSync(`node ${tmpScript}`, {
-        cwd: projectRoot,
-        encoding: 'utf-8',
-        timeout: 45000,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      syncOk = output.includes('SYNCED:');
-    } finally {
-      try {
-        fs.unlinkSync(tmpScript);
-      } catch {}
-    }
-  } catch (err) {
-    logger.error({ err }, 'Sync failed');
-  }
-
-  let groupsInDb = 0;
-  const dbPath = path.join(STORE_DIR, 'messages.db');
-  if (fs.existsSync(dbPath)) {
-    try {
-      const db = new Database(dbPath, { readonly: true });
-      const row = db
-        .prepare(
-          "SELECT COUNT(*) as count FROM chats WHERE jid LIKE '%@g.us' AND jid <> '__group_sync__'",
-        )
-        .get() as { count: number };
-      groupsInDb = row.count;
-      db.close();
-    } catch {
-      groupsInDb = 0;
-    }
-  }
-
-  const status = syncOk ? 'success' : 'failed';
   emitStatus('SYNC_GROUPS', {
-    BUILD: buildOk ? 'success' : 'failed',
-    SYNC: syncOk ? 'success' : 'failed',
-    GROUPS_IN_DB: groupsInDb,
-    STATUS: status,
+    STORAGE: 'json',
+    BUILD: 'skipped',
+    SYNC: 'skipped',
+    GROUPS_IN_DB: groups.length,
+    REASON: 'setup_sync_removed_register_groups_manually',
+    STATUS: 'success',
     LOG: 'logs/setup.log',
   });
-
-  if (status === 'failed') process.exit(1);
 }
 
 async function runRegisterStep(args: string[]): Promise<void> {
   const projectRoot = process.cwd();
   const parsed = parseRegisterArgs(args);
+  const trigger = parsed.trigger || `@${parsed.assistantName}`;
 
-  if (!parsed.jid || !parsed.name || !parsed.trigger || !parsed.folder) {
+  if (!parsed.jid || !parsed.name || !parsed.folder) {
     emitStatus('REGISTER_CHANNEL', {
       STATUS: 'failed',
       ERROR: 'missing_required_args',
@@ -477,17 +326,16 @@ async function runRegisterStep(args: string[]): Promise<void> {
   }
 
   fs.mkdirSync(path.join(projectRoot, 'data'), { recursive: true });
-  fs.mkdirSync(STORE_DIR, { recursive: true });
-  initDatabase();
-
-  setRegisteredGroup(parsed.jid, {
+  const groups = readAllRegisteredGroupsState();
+  groups[parsed.jid] = {
     name: parsed.name,
     folder: parsed.folder,
-    trigger: parsed.trigger,
+    trigger,
     added_at: new Date().toISOString(),
     requiresTrigger: parsed.requiresTrigger,
     isMain: parsed.isMain,
-  });
+  };
+  writeAllRegisteredGroupsState(groups);
 
   fs.mkdirSync(path.join(projectRoot, 'groups', parsed.folder, 'logs'), {
     recursive: true,
@@ -535,7 +383,7 @@ async function runRegisterStep(args: string[]): Promise<void> {
     NAME: parsed.name,
     FOLDER: parsed.folder,
     CHANNEL: parsed.channel,
-    TRIGGER: parsed.trigger,
+    TRIGGER: trigger,
     REQUIRES_TRIGGER: parsed.requiresTrigger,
     ASSISTANT_NAME: parsed.assistantName,
     NAME_UPDATED: nameUpdated,
@@ -921,14 +769,8 @@ async function runVerifyStep(_args: string[]): Promise<void> {
     }
   }
 
-  const agentRunnerDist = path.join(
-    projectRoot,
-    'container',
-    'agent-runner',
-    'dist',
-    'index.js',
-  );
-  const agentRunnerReady = fs.existsSync(agentRunnerDist) ? 'ready' : 'not_built';
+  const runtimeEntry = path.join(projectRoot, 'dist', 'index.js');
+  const agentRunnerReady = fs.existsSync(runtimeEntry) ? 'ready' : 'not_built';
 
   let credentials = 'missing';
   const envFile = path.join(projectRoot, '.env');
@@ -957,10 +799,6 @@ async function runVerifyStep(_args: string[]): Promise<void> {
   ]);
 
   const channelAuth: Record<string, string> = {};
-  const authDir = path.join(projectRoot, 'store', 'auth');
-  if (fs.existsSync(authDir) && fs.readdirSync(authDir).length > 0) {
-    channelAuth.whatsapp = 'authenticated';
-  }
   if (process.env.TELEGRAM_BOT_TOKEN || envVars.TELEGRAM_BOT_TOKEN) {
     channelAuth.telegram = 'configured';
   }
@@ -985,20 +823,7 @@ async function runVerifyStep(_args: string[]): Promise<void> {
   }
 
   const configuredChannels = Object.keys(channelAuth);
-  let registeredGroups = 0;
-  const dbPath = path.join(STORE_DIR, 'messages.db');
-  if (fs.existsSync(dbPath)) {
-    try {
-      const db = new Database(dbPath, { readonly: true });
-      const row = db
-        .prepare('SELECT COUNT(*) as count FROM registered_groups')
-        .get() as { count: number };
-      registeredGroups = row.count;
-      db.close();
-    } catch {
-      registeredGroups = 0;
-    }
-  }
+  const registeredGroups = listRegisteredGroups().length;
 
   const status =
     service === 'running' &&
@@ -1011,6 +836,7 @@ async function runVerifyStep(_args: string[]): Promise<void> {
   emitStatus('VERIFY', {
     SERVICE: service,
     AGENT_RUNNER: agentRunnerReady,
+    STORAGE: 'json',
     CREDENTIALS: credentials,
     CONFIGURED_CHANNELS: configuredChannels.join(','),
     CHANNEL_AUTH: JSON.stringify(channelAuth),
@@ -1021,33 +847,6 @@ async function runVerifyStep(_args: string[]): Promise<void> {
   });
 
   if (status === 'failed') process.exit(1);
-}
-
-async function runWhatsAppAuthStep(args: string[]): Promise<void> {
-  const methodIndex = args.indexOf('--method');
-  const method = methodIndex >= 0 ? args[methodIndex + 1] : undefined;
-  const forwardedArgs: string[] = [];
-
-  if (method === 'pairing-code') {
-    forwardedArgs.push('--pairing-code');
-    const phoneIndex = args.indexOf('--phone');
-    if (phoneIndex >= 0 && args[phoneIndex + 1]) {
-      forwardedArgs.push('--phone', args[phoneIndex + 1]);
-    }
-  }
-
-  const result = spawnSync(
-    'npx',
-    ['tsx', 'src/whatsapp-auth.ts', ...forwardedArgs],
-    {
-      cwd: process.cwd(),
-      stdio: 'inherit',
-    },
-  );
-
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
 }
 
 async function main(): Promise<void> {

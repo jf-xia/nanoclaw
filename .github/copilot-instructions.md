@@ -17,7 +17,7 @@ npm run format         # Prettier write
 
 ## Architecture
 
-Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Incoming messages are stored in SQLite, then routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
+Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Message history, chat discovery, and scheduled tasks are stored in SQLite; lightweight runtime state (`router_state.json`, `sessions.json`, `registered_groups.json`) is stored in `data/` as JSON. Messages are routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
 
 **Message flow:**
 
@@ -40,7 +40,8 @@ Channel → db.storeMessage() → message loop polls → GroupQueue
 | `src/index.ts` | Orchestrator: channels, message loop, agent invocation |
 | `src/container-runner.ts` | Spawns local runners, prepares runtime dirs, parses output |
 | `src/ipc.ts` | IPC watcher: processes task/message files from local runners |
-| `src/db.ts` | SQLite layer (better-sqlite3, synchronous) |
+| `src/db.ts` | SQLite data layer plus migration bridge into JSON runtime state |
+| `src/state-files.ts` | JSON-backed runtime state for router state, sessions, and registered groups |
 | `src/group-queue.ts` | Concurrency manager (default max 5 active runners) |
 | `src/router.ts` | XML message formatting, outbound routing |
 | `src/config.ts` | All env vars and computed paths |
@@ -62,7 +63,7 @@ logger.error({ err, group: name }, 'Agent failed');
 ```
 
 ### Database
-`src/db.ts` uses **better-sqlite3** (synchronous). Always use prepared statements. Schema changes go in `createSchema()` using `ALTER TABLE` wrapped in try/catch for idempotency. No ORM.
+`src/db.ts` uses **better-sqlite3** (synchronous) for messages, chats, and scheduled tasks. Runtime state such as router cursors, Copilot session IDs, and registered groups is stored in JSON via `src/state-files.ts`. SQLite schema changes go in `createSchema()` using `ALTER TABLE` wrapped in try/catch for idempotency. No ORM.
 
 ```ts
 db.prepare('INSERT INTO messages (id, text) VALUES (?, ?)').run(id, text);
