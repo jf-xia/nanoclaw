@@ -1,0 +1,8 @@
+{  
+  "default": { "allow": "*", "mode": "trigger" },  
+  "chats": {  
+    "group-a@g.us": { "allow": ["alice"], "mode": "drop" },  
+    "group-b@g.us": { "allow": ["bob", "charlie"], "mode": "trigger" }  
+  },  
+  "logDenied": true  
+}

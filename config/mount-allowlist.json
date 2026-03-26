@@ -1,0 +1,15 @@
+{
+  "allowedRoots": [
+    {
+      "path": "~/works",
+      "allowReadWrite": true,
+      "description": "Development works"
+    }
+  ],
+  "blockedPatterns": [
+    "password",
+    "secret",
+    "token"
+  ],
+  "nonMainReadOnly": true
+}
