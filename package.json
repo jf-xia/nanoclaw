@@ -20,7 +20,7 @@
   "dependencies": {
     "@onecli-sh/sdk": "^0.2.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^11.10.0",
     "cron-parser": "^5.5.0",
     "grammy": "^1.39.3",
     "imapflow": "^1.2.18",

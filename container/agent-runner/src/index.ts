@@ -23,7 +23,7 @@ import {
   type SessionConfig,
   type SessionEvent,
 } from '@github/copilot-sdk';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 interface ContainerInput {
   prompt: string;
@@ -311,6 +311,26 @@ function buildCliArgs(containerInput: ContainerInput, extraDirs: string[]): stri
   return args;
 }
 
+function appendNodeOption(nodeOptions: string | undefined, option: string): string {
+  if (!nodeOptions) return option;
+  return nodeOptions.includes(option) ? nodeOptions : `${nodeOptions} ${option}`;
+}
+
+function buildCopilotCliEnv(
+  sdkEnv: Record<string, string | undefined>,
+  sqliteLoaderPath: string,
+): Record<string, string | undefined> {
+  const loaderOption = `--experimental-loader=${pathToFileURL(sqliteLoaderPath).href}`;
+  let nodeOptions = appendNodeOption(sdkEnv.NODE_OPTIONS, '--experimental-sqlite');
+  nodeOptions = appendNodeOption(nodeOptions, loaderOption);
+  nodeOptions = appendNodeOption(nodeOptions, '--disable-warning=ExperimentalWarning');
+
+  return {
+    ...sdkEnv,
+    NODE_OPTIONS: nodeOptions,
+  };
+}
+
 type SessionProviderConfig = NonNullable<SessionConfig['provider']>;
 
 function resolveProviderConfig(sdkEnv: Record<string, string | undefined>): SessionProviderConfig | undefined {
@@ -516,6 +536,7 @@ async function main(): Promise<void> {
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
+  const sqliteLoaderPath = path.join(__dirname, 'copilot-node-sqlite-loader.js');
   const extraDirs = findMountedExtraDirectories();
   const sessionConfig = buildSessionConfig(containerInput, sdkEnv, mcpServerPath, extraDirs);
 
@@ -537,7 +558,7 @@ async function main(): Promise<void> {
 
   const client = new CopilotClient({
     cwd: WORKSPACE_GROUP_DIR,
-    env: sdkEnv,
+    env: buildCopilotCliEnv(sdkEnv, sqliteLoaderPath),
     cliArgs: buildCliArgs(containerInput, extraDirs),
     logLevel: 'warning',
     useLoggedInUser: false,
