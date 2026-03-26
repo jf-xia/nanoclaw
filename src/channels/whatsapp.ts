@@ -31,6 +31,14 @@ import {
 import { registerChannel, ChannelOpts } from './registry.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const RECONNECT_DELAY_MS = 5000;
+const PERMANENT_DISCONNECT_REASONS = new Set<number>([
+  DisconnectReason.loggedOut,
+  DisconnectReason.connectionReplaced,
+  DisconnectReason.multideviceMismatch,
+  DisconnectReason.forbidden,
+  DisconnectReason.badSession,
+]);
 
 export interface WhatsAppChannelOpts {
   onMessage: OnInboundMessage;
@@ -101,13 +109,21 @@ export class WhatsAppChannel implements Channel {
 
       if (connection === 'close') {
         this.connected = false;
-        const reason = (
-          lastDisconnect?.error as { output?: { statusCode?: number } }
-        )?.output?.statusCode;
-        const shouldReconnect = reason !== DisconnectReason.loggedOut;
+        const disconnectError = lastDisconnect?.error as
+          | {
+              output?: { statusCode?: number };
+              data?: { tag?: string; attrs?: Record<string, string> };
+            }
+          | undefined;
+        const reason = disconnectError?.output?.statusCode;
+        const reasonTag = disconnectError?.data?.tag;
+        const shouldReconnect =
+          reason === undefined || !PERMANENT_DISCONNECT_REASONS.has(reason);
         logger.info(
           {
             reason,
+            reasonTag,
+            reasonAttrs: disconnectError?.data?.attrs,
             shouldReconnect,
             queuedMessages: this.outgoingQueue.length,
           },
@@ -117,15 +133,24 @@ export class WhatsAppChannel implements Channel {
         if (shouldReconnect) {
           logger.info('Reconnecting...');
           this.connectInternal().catch((err) => {
-            logger.error({ err }, 'Failed to reconnect, retrying in 5s');
+            logger.error(
+              { err, delayMs: RECONNECT_DELAY_MS },
+              'Failed to reconnect, retrying later',
+            );
             setTimeout(() => {
               this.connectInternal().catch((err2) => {
                 logger.error({ err: err2 }, 'Reconnection retry failed');
               });
-            }, 5000);
+            }, RECONNECT_DELAY_MS);
           });
         } else {
-          logger.info('Logged out. Run /setup to re-authenticate.');
+          if (reason === DisconnectReason.connectionReplaced) {
+            logger.info(
+              'WhatsApp session was replaced by another login. Close the other session or run /setup to re-authenticate.',
+            );
+          } else {
+            logger.info('Logged out. Run /setup to re-authenticate.');
+          }
           process.exit(0);
         }
       } else if (connection === 'open') {

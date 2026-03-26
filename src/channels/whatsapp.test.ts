@@ -81,6 +81,8 @@ vi.mock('@whiskeysockets/baileys', () => {
       connectionClosed: 428,
       connectionLost: 408,
       connectionReplaced: 440,
+      multideviceMismatch: 411,
+      forbidden: 403,
       timedOut: 408,
       restartRequired: 515,
     },
@@ -99,6 +101,7 @@ vi.mock('@whiskeysockets/baileys', () => {
   };
 });
 
+import makeWASocket from '@whiskeysockets/baileys';
 import { WhatsAppChannel, WhatsAppChannelOpts } from './whatsapp.js';
 import { getLastGroupSync, updateChatName, setLastGroupSync } from '../db.js';
 
@@ -126,11 +129,14 @@ function triggerConnection(state: string, extra?: Record<string, unknown>) {
   fakeSocket._ev.emit('connection.update', { connection: state, ...extra });
 }
 
-function triggerDisconnect(statusCode: number) {
+function triggerDisconnect(
+  statusCode: number,
+  data?: { tag?: string; attrs?: Record<string, string> },
+) {
   fakeSocket._ev.emit('connection.update', {
     connection: 'close',
     lastDisconnect: {
-      error: { output: { statusCode } },
+      error: { output: { statusCode }, data },
     },
   });
 }
@@ -315,6 +321,26 @@ describe('WhatsAppChannel', () => {
 
       expect(channel.isConnected()).toBe(false);
       expect(mockExit).toHaveBeenCalledWith(0);
+      mockExit.mockRestore();
+    });
+
+    it('exits without reconnecting when session is replaced', async () => {
+      const mockExit = vi
+        .spyOn(process, 'exit')
+        .mockImplementation(() => undefined as never);
+
+      const opts = createTestOpts();
+      const channel = new WhatsAppChannel(opts);
+
+      await connectChannel(channel);
+      const socketCreateCount = vi.mocked(makeWASocket).mock.calls.length;
+
+      triggerDisconnect(440, { tag: 'conflict', attrs: { type: 'replaced' } });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(channel.isConnected()).toBe(false);
+      expect(mockExit).toHaveBeenCalledWith(0);
+      expect(vi.mocked(makeWASocket).mock.calls.length).toBe(socketCreateCount);
       mockExit.mockRestore();
     });
 
