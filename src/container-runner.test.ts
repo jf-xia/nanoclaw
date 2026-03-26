@@ -6,6 +6,10 @@ const { mockSpawn } = vi.hoisted(() => ({
   mockSpawn: vi.fn(),
 }));
 
+const { mockReadEnvFile } = vi.hoisted(() => ({
+  mockReadEnvFile: vi.fn(() => ({})),
+}));
+
 // Sentinel markers must match container-runner.ts
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
@@ -55,7 +59,7 @@ vi.mock('fs', async () => {
 
 // Mock env.js
 vi.mock('./env.js', () => ({
-  readEnvFile: vi.fn(() => ({})),
+  readEnvFile: mockReadEnvFile,
 }));
 
 // Create a controllable fake ChildProcess
@@ -120,6 +124,12 @@ describe('agent-runner timeout behavior', () => {
     fakeProc = createFakeProcess();
     mockSpawn.mockClear();
     mockSpawn.mockImplementation(() => fakeProc);
+    mockReadEnvFile.mockReset();
+    mockReadEnvFile.mockReturnValue({});
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.COPILOT_GITHUB_TOKEN;
+    delete process.env.NANOCLAW_COPILOT_GITHUB_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   afterEach(() => {
@@ -243,6 +253,65 @@ describe('agent-runner timeout behavior', () => {
     fakeProc.emit('close', 0);
     await vi.advanceTimersByTimeAsync(10);
 
+    await resultPromise;
+  });
+
+  it('does not forward generic GITHUB_TOKEN into the agent environment', async () => {
+    process.env.GITHUB_TOKEN = 'host-token';
+    mockReadEnvFile.mockReturnValue({ GITHUB_TOKEN: 'dotenv-token' });
+
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      undefined,
+    );
+
+    const spawnCall = mockSpawn.mock.calls.at(0);
+    expect(spawnCall).toBeDefined();
+    const [, , opts] = spawnCall as [
+      string,
+      string[],
+      { env: NodeJS.ProcessEnv; cwd: string },
+    ];
+
+    expect(opts.env.GITHUB_TOKEN).toBeUndefined();
+
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await resultPromise;
+  });
+
+  it('keeps Anthropic provider credentials but strips dedicated Copilot token envs', async () => {
+    mockReadEnvFile.mockReturnValue({
+      ANTHROPIC_API_KEY: 'anthropic-key',
+      COPILOT_GITHUB_TOKEN: 'copilot-token',
+    });
+
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      undefined,
+    );
+
+    const spawnCall = mockSpawn.mock.calls.at(0);
+    expect(spawnCall).toBeDefined();
+    const [, , opts] = spawnCall as [
+      string,
+      string[],
+      { env: NodeJS.ProcessEnv; cwd: string },
+    ];
+
+    expect(opts.env).toMatchObject({
+      ANTHROPIC_API_KEY: 'anthropic-key',
+    });
+    expect(opts.env.NANOCLAW_COPILOT_GITHUB_TOKEN).toBeUndefined();
+    expect(opts.env.COPILOT_GITHUB_TOKEN).toBeUndefined();
+    expect(opts.env.GITHUB_TOKEN).toBeUndefined();
+
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
     await resultPromise;
   });
 });

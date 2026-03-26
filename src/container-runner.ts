@@ -76,6 +76,10 @@ function buildAgentEnv(
     NANOCLAW_GROUP_DIR: groupDir,
   };
 
+  // Generic GitHub tokens often lack Copilot model entitlement and can
+  // accidentally override a valid logged-in Copilot session.
+  delete env.GITHUB_TOKEN;
+
   if (!isMain && fs.existsSync(globalDir)) {
     env.NANOCLAW_GLOBAL_DIR = globalDir;
   }
@@ -85,13 +89,14 @@ function buildAgentEnv(
   }
 
   // Inject credentials from .env if not already in process.env
-  const envSecrets = readEnvFile(['GITHUB_TOKEN', 'ANTHROPIC_API_KEY']);
-  if (!env.GITHUB_TOKEN && envSecrets.GITHUB_TOKEN) {
-    env.GITHUB_TOKEN = envSecrets.GITHUB_TOKEN;
-  }
+  const envSecrets = readEnvFile([
+    'ANTHROPIC_API_KEY',
+  ]);
   if (!env.ANTHROPIC_API_KEY && envSecrets.ANTHROPIC_API_KEY) {
     env.ANTHROPIC_API_KEY = envSecrets.ANTHROPIC_API_KEY;
   }
+  delete env.NANOCLAW_COPILOT_GITHUB_TOKEN;
+  delete env.COPILOT_GITHUB_TOKEN;
 
   return env;
 }

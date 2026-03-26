@@ -77,21 +77,28 @@ describe('credentials detection', () => {
     const content =
       'SOME_KEY=value\nANTHROPIC_API_KEY=sk-ant-test123\nOTHER=foo';
     const hasCredentials =
-      /^(GITHUB_TOKEN|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)=/m.test(content);
+      /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ONECLI_URL)=/m.test(content);
     expect(hasCredentials).toBe(true);
   });
 
-  it('detects GITHUB_TOKEN in env content', () => {
-    const content = 'GITHUB_TOKEN=token123';
+  it('detects ANTHROPIC_AUTH_TOKEN in env content', () => {
+    const content = 'ANTHROPIC_AUTH_TOKEN=token123';
     const hasCredentials =
-      /^(GITHUB_TOKEN|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)=/m.test(content);
+      /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ONECLI_URL)=/m.test(content);
+    expect(hasCredentials).toBe(true);
+  });
+
+  it('detects ONECLI_URL in env content', () => {
+    const content = 'ONECLI_URL=http://localhost:8080';
+    const hasCredentials =
+      /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ONECLI_URL)=/m.test(content);
     expect(hasCredentials).toBe(true);
   });
 
   it('returns false when no credentials', () => {
     const content = 'ASSISTANT_NAME="Andy"\nOTHER=foo';
     const hasCredentials =
-      /^(GITHUB_TOKEN|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)=/m.test(content);
+      /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ONECLI_URL)=/m.test(content);
     expect(hasCredentials).toBe(false);
   });
 });
@@ -118,4 +125,3 @@ describe('channel auth detection', () => {
     expect(hasAuth('/tmp/nonexistent_auth_dir_xyz')).toBe(false);
   });
 });
-

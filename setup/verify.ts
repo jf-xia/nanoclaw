@@ -89,7 +89,7 @@ export async function run(_args: string[]): Promise<void> {
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    if (/^(export\s+)?(GITHUB_TOKEN|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ONECLI_URL)=/m.test(envContent)) {
+    if (/^(export\s+)?(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ONECLI_URL)=/m.test(envContent)) {
       credentials = 'configured';
     }
   }

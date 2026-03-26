@@ -316,6 +316,16 @@ function appendNodeOption(nodeOptions: string | undefined, option: string): stri
   return nodeOptions.includes(option) ? nodeOptions : `${nodeOptions} ${option}`;
 }
 
+function resolveCopilotCliPath(dirname: string): string {
+  const cliBinary = process.platform === 'win32' ? 'copilot.cmd' : 'copilot';
+  const cliPath = path.join(dirname, '..', 'node_modules', '.bin', cliBinary);
+  if (!fs.existsSync(cliPath)) {
+    throw new Error(`Bundled Copilot CLI not found at ${cliPath}`);
+  }
+
+  return cliPath;
+}
+
 function buildCopilotCliEnv(
   sdkEnv: Record<string, string | undefined>,
   sqliteLoaderPath: string,
@@ -325,8 +335,13 @@ function buildCopilotCliEnv(
   nodeOptions = appendNodeOption(nodeOptions, loaderOption);
   nodeOptions = appendNodeOption(nodeOptions, '--disable-warning=ExperimentalWarning');
 
+  const cliEnv = { ...sdkEnv };
+  delete cliEnv.GITHUB_TOKEN;
+  delete cliEnv.COPILOT_GITHUB_TOKEN;
+  delete cliEnv.NANOCLAW_COPILOT_GITHUB_TOKEN;
+
   return {
-    ...sdkEnv,
+    ...cliEnv,
     NODE_OPTIONS: nodeOptions,
   };
 }
@@ -537,6 +552,7 @@ async function main(): Promise<void> {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
   const sqliteLoaderPath = path.join(__dirname, 'copilot-node-sqlite-loader.js');
+  const copilotCliPath = resolveCopilotCliPath(__dirname);
   const extraDirs = findMountedExtraDirectories();
   const sessionConfig = buildSessionConfig(containerInput, sdkEnv, mcpServerPath, extraDirs);
 
@@ -558,11 +574,11 @@ async function main(): Promise<void> {
 
   const client = new CopilotClient({
     cwd: WORKSPACE_GROUP_DIR,
+    cliPath: copilotCliPath,
     env: buildCopilotCliEnv(sdkEnv, sqliteLoaderPath),
     cliArgs: buildCliArgs(containerInput, extraDirs),
     logLevel: 'warning',
-    useLoggedInUser: false,
-    ...(sdkEnv.GITHUB_TOKEN ? { githubToken: sdkEnv.GITHUB_TOKEN } : {}),
+    useLoggedInUser: true,
   });
 
   const archivedCompactions = new Set<string>();
