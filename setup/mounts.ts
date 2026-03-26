@@ -4,8 +4,8 @@
  */
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 
+import { MOUNT_ALLOWLIST_PATH } from '../src/config.js';
 import { logger } from '../src/logger.js';
 import { isRoot } from './platform.js';
 import { emitStatus } from './status.js';
@@ -25,13 +25,12 @@ function parseArgs(args: string[]): { empty: boolean; json: string } {
 
 export async function run(args: string[]): Promise<void> {
   const { empty, json } = parseArgs(args);
-  const homeDir = os.homedir();
-  const configDir = path.join(homeDir, '.config', 'nanoclaw');
-  const configFile = path.join(configDir, 'mount-allowlist.json');
+  const configFile = MOUNT_ALLOWLIST_PATH;
+  const configDir = path.dirname(configFile);
 
   if (isRoot()) {
     logger.warn(
-      'Running as root — mount allowlist will be written to root home directory',
+      'Running as root — mount allowlist will still be written under the project directory',
     );
   }
 

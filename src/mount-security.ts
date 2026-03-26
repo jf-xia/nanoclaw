@@ -1,17 +1,15 @@
 /**
  * Mount Security Module for NanoClaw
  *
- * Validates additional mounts against an allowlist stored OUTSIDE the project root.
- * This prevents container agents from modifying security configuration.
+ * Validates additional mounts against an allowlist stored inside the project root.
  *
- * Allowlist location: ~/.config/nanoclaw/mount-allowlist.json
+ * Allowlist location: config/mount-allowlist.json
  */
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import pino from 'pino';
 
-import { MOUNT_ALLOWLIST_PATH } from './config.js';
+import { MOUNT_ALLOWLIST_PATH, PROJECT_ROOT } from './config.js';
 import { AdditionalMount, AllowedRoot, MountAllowlist } from './types.js';
 
 const logger = pino({
@@ -47,7 +45,7 @@ const DEFAULT_BLOCKED_PATTERNS = [
 ];
 
 /**
- * Load the mount allowlist from the external config location.
+ * Load the mount allowlist from the project config location.
  * Returns null if the file doesn't exist or is invalid.
  * Result is cached in memory for the lifetime of the process.
  */
@@ -119,15 +117,14 @@ export function loadMountAllowlist(): MountAllowlist | null {
 }
 
 /**
- * Expand ~ to home directory and resolve to absolute path
+ * Expand ~ to the project root and resolve to an absolute path.
  */
 function expandPath(p: string): string {
-  const homeDir = process.env.HOME || os.homedir();
   if (p.startsWith('~/')) {
-    return path.join(homeDir, p.slice(2));
+    return path.join(PROJECT_ROOT, p.slice(2));
   }
   if (p === '~') {
-    return homeDir;
+    return PROJECT_ROOT;
   }
   return path.resolve(p);
 }

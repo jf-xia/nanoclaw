@@ -32,9 +32,9 @@ Each group gets separate runtime paths under `groups/`, `data/ipc/`, and `data/s
 
 ### 2. Mount Allowlist
 
-Additional directory access is controlled by `~/.config/nanoclaw/mount-allowlist.json`.
+Additional directory access is controlled by `config/mount-allowlist.json`.
 
-- The allowlist lives outside the repo.
+- The allowlist lives inside the project directory.
 - Symlinks are resolved before validation.
 - Blocked patterns still reject sensitive paths such as `.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.env`, and private keys.
 - Non-main groups can still be forced read-only through `nonMainReadOnly`.

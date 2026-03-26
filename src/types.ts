@@ -1,13 +1,12 @@
 export interface AdditionalMount {
-  hostPath: string; // Absolute path on host (supports ~ for home)
+  hostPath: string; // Absolute path on host (supports ~ for project root)
   containerPath?: string; // Optional — defaults to basename of hostPath. Mounted at /workspace/extra/{value}
   readonly?: boolean; // Default: true for safety
 }
 
 /**
  * Mount Allowlist - Security configuration for additional mounts
- * This file should be stored at ~/.config/nanoclaw/mount-allowlist.json
- * and is NOT mounted into any container, making it tamper-proof from agents.
+ * This file should be stored at config/mount-allowlist.json.
  */
 export interface MountAllowlist {
   // Directories that can be mounted into containers
@@ -19,7 +18,7 @@ export interface MountAllowlist {
 }
 
 export interface AllowedRoot {
-  // Absolute path or ~ for home (e.g., "~/projects", "/var/repos")
+  // Absolute path or ~ for project root (e.g., "~/docs", "/var/repos")
   path: string;
   // Whether read-write mounts are allowed under this root
   allowReadWrite: boolean;

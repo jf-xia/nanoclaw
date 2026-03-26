@@ -6,12 +6,11 @@
  */
 import { execSync } from 'child_process';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 
 import Database from 'better-sqlite3';
 
-import { STORE_DIR } from '../src/config.js';
+import { MOUNT_ALLOWLIST_PATH, STORE_DIR } from '../src/config.js';
 import { readEnvFile } from '../src/env.js';
 import { logger } from '../src/logger.js';
 import {
@@ -25,7 +24,6 @@ import { emitStatus } from './status.js';
 export async function run(_args: string[]): Promise<void> {
   const projectRoot = process.cwd();
   const platform = getPlatform();
-  const homeDir = os.homedir();
 
   logger.info('Starting verification');
 
@@ -147,11 +145,7 @@ export async function run(_args: string[]): Promise<void> {
 
   // 6. Check mount allowlist
   let mountAllowlist = 'missing';
-  if (
-    fs.existsSync(
-      path.join(homeDir, '.config', 'nanoclaw', 'mount-allowlist.json'),
-    )
-  ) {
+  if (fs.existsSync(MOUNT_ALLOWLIST_PATH)) {
     mountAllowlist = 'configured';
   }
 
