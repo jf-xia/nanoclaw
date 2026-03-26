@@ -1,24 +1,28 @@
 import fs from 'fs';
 
-import { SENDER_ALLOWLIST_PATH } from './config.js';
+import { DEFAULT_SENDER_ALLOWLIST } from './config.js';
 import { logger } from './logger.js';
+import type { ChatAllowlistEntry, SenderAllowlistConfig } from './types.js';
 
-export interface ChatAllowlistEntry {
-  allow: '*' | string[];
-  mode: 'trigger' | 'drop';
+export type { ChatAllowlistEntry, SenderAllowlistConfig } from './types.js';
+
+function cloneConfig(config: SenderAllowlistConfig): SenderAllowlistConfig {
+  return {
+    default:
+      config.default.allow === '*'
+        ? { allow: '*', mode: config.default.mode }
+        : { allow: [...config.default.allow], mode: config.default.mode },
+    chats: Object.fromEntries(
+      Object.entries(config.chats).map(([jid, entry]) => [
+        jid,
+        entry.allow === '*'
+          ? { allow: '*', mode: entry.mode }
+          : { allow: [...entry.allow], mode: entry.mode },
+      ]),
+    ),
+    logDenied: config.logDenied,
+  };
 }
-
-export interface SenderAllowlistConfig {
-  default: ChatAllowlistEntry;
-  chats: Record<string, ChatAllowlistEntry>;
-  logDenied: boolean;
-}
-
-const DEFAULT_CONFIG: SenderAllowlistConfig = {
-  default: { allow: '*', mode: 'trigger' },
-  chats: {},
-  logDenied: true,
-};
 
 function isValidEntry(entry: unknown): entry is ChatAllowlistEntry {
   if (!entry || typeof entry !== 'object') return false;
@@ -33,18 +37,24 @@ function isValidEntry(entry: unknown): entry is ChatAllowlistEntry {
 export function loadSenderAllowlist(
   pathOverride?: string,
 ): SenderAllowlistConfig {
-  const filePath = pathOverride ?? SENDER_ALLOWLIST_PATH;
+  if (!pathOverride) {
+    return cloneConfig(DEFAULT_SENDER_ALLOWLIST);
+  }
+
+  const filePath = pathOverride;
 
   let raw: string;
   try {
     raw = fs.readFileSync(filePath, 'utf-8');
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_CONFIG;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return cloneConfig(DEFAULT_SENDER_ALLOWLIST);
+    }
     logger.warn(
       { err, path: filePath },
       'sender-allowlist: cannot read config',
     );
-    return DEFAULT_CONFIG;
+    return cloneConfig(DEFAULT_SENDER_ALLOWLIST);
   }
 
   let parsed: unknown;
@@ -52,7 +62,7 @@ export function loadSenderAllowlist(
     parsed = JSON.parse(raw);
   } catch {
     logger.warn({ path: filePath }, 'sender-allowlist: invalid JSON');
-    return DEFAULT_CONFIG;
+    return cloneConfig(DEFAULT_SENDER_ALLOWLIST);
   }
 
   const obj = parsed as Record<string, unknown>;
@@ -62,7 +72,7 @@ export function loadSenderAllowlist(
       { path: filePath },
       'sender-allowlist: invalid or missing default entry',
     );
-    return DEFAULT_CONFIG;
+    return cloneConfig(DEFAULT_SENDER_ALLOWLIST);
   }
 
   const chats: Record<string, ChatAllowlistEntry> = {};

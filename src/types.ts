@@ -4,10 +4,6 @@ export interface AdditionalMount {
   readonly?: boolean; // Default: true for safety
 }
 
-/**
- * Mount Allowlist - Security configuration for additional mounts
- * This file should be stored at config/mount-allowlist.json.
- */
 export interface MountAllowlist {
   // Directories that can be mounted into containers
   allowedRoots: AllowedRoot[];
@@ -24,6 +20,17 @@ export interface AllowedRoot {
   allowReadWrite: boolean;
   // Optional description for documentation
   description?: string;
+}
+
+export interface ChatAllowlistEntry {
+  allow: '*' | string[];
+  mode: 'trigger' | 'drop';
+}
+
+export interface SenderAllowlistConfig {
+  default: ChatAllowlistEntry;
+  chats: Record<string, ChatAllowlistEntry>;
+  logDenied: boolean;
 }
 
 export interface ContainerConfig {

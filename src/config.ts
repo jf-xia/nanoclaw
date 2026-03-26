@@ -1,6 +1,7 @@
 import path from 'path';
 
 import { readEnvFile } from './env.js';
+import type { MountAllowlist, SenderAllowlistConfig } from './types.js';
 
 // Read config values from .env (falls back to process.env).
 const envConfig = readEnvFile([
@@ -19,19 +20,30 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 
 // Absolute paths needed for container mounts
 export const PROJECT_ROOT = process.cwd();
-export const PROJECT_CONFIG_DIR = path.resolve(PROJECT_ROOT, 'config');
+export const DEFAULT_MOUNT_ALLOWLIST: MountAllowlist = {
+  allowedRoots: [
+    {
+      path: '~/works',
+      allowReadWrite: true,
+      description: 'Development works',
+    },
+  ],
+  blockedPatterns: ['password', 'secret', 'token'],
+  nonMainReadOnly: true,
+};
 
-// Project-local security config files
-// todo4fix: remove mount-allowlist.json file , just code the json structure in src/config.ts and read it directly from there instead of disk
-export const MOUNT_ALLOWLIST_PATH = path.join(
-  PROJECT_CONFIG_DIR,
-  'mount-allowlist.json',
-);
-// todo4fix: remove sender-allowlist.json file , just code the json structure in src/config.ts and read it directly from there instead of disk
-export const SENDER_ALLOWLIST_PATH = path.join(
-  PROJECT_CONFIG_DIR,
-  'sender-allowlist.json',
-);
+export const DEFAULT_SENDER_ALLOWLIST: SenderAllowlistConfig = {
+  default: { allow: '*', mode: 'trigger' },
+  chats: {
+    'group-a@g.us': { allow: ['alice'], mode: 'drop' },
+    'group-b@g.us': {
+      allow: ['bob', 'charlie'],
+      mode: 'trigger',
+    },
+  },
+  logDenied: true,
+};
+
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');

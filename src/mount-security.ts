@@ -1,15 +1,13 @@
 /**
  * Mount Security Module for NanoClaw
  *
- * Validates additional mounts against an allowlist stored inside the project root.
- *
- * Allowlist location: config/mount-allowlist.json
+ * Validates additional mounts against an allowlist embedded in project config.
  */
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
 
-import { MOUNT_ALLOWLIST_PATH, PROJECT_ROOT } from './config.js';
+import { DEFAULT_MOUNT_ALLOWLIST, PROJECT_ROOT } from './config.js';
 import { AdditionalMount, AllowedRoot, MountAllowlist } from './types.js';
 
 const logger = pino({
@@ -19,7 +17,6 @@ const logger = pino({
 
 // Cache the allowlist in memory - only reloads on process restart
 let cachedAllowlist: MountAllowlist | null = null;
-let allowlistLoadError: string | null = null;
 
 /**
  * Default blocked patterns - paths that should never be mounted
@@ -45,8 +42,7 @@ const DEFAULT_BLOCKED_PATTERNS = [
 ];
 
 /**
- * Load the mount allowlist from the project config location.
- * Returns null if the file doesn't exist or is invalid.
+ * Load the embedded mount allowlist.
  * Result is cached in memory for the lifetime of the process.
  */
 export function loadMountAllowlist(): MountAllowlist | null {
@@ -54,24 +50,14 @@ export function loadMountAllowlist(): MountAllowlist | null {
     return cachedAllowlist;
   }
 
-  if (allowlistLoadError !== null) {
-    // Already tried and failed, don't spam logs
-    return null;
-  }
-
   try {
-    if (!fs.existsSync(MOUNT_ALLOWLIST_PATH)) {
-      allowlistLoadError = `Mount allowlist not found at ${MOUNT_ALLOWLIST_PATH}`;
-      logger.warn(
-        { path: MOUNT_ALLOWLIST_PATH },
-        'Mount allowlist not found - additional mounts will be BLOCKED. ' +
-          'Create the file to enable additional mounts.',
-      );
-      return null;
-    }
-
-    const content = fs.readFileSync(MOUNT_ALLOWLIST_PATH, 'utf-8');
-    const allowlist = JSON.parse(content) as MountAllowlist;
+    const allowlist: MountAllowlist = {
+      allowedRoots: DEFAULT_MOUNT_ALLOWLIST.allowedRoots.map((root) => ({
+        ...root,
+      })),
+      blockedPatterns: [...DEFAULT_MOUNT_ALLOWLIST.blockedPatterns],
+      nonMainReadOnly: DEFAULT_MOUNT_ALLOWLIST.nonMainReadOnly,
+    };
 
     // Validate structure
     if (!Array.isArray(allowlist.allowedRoots)) {
@@ -95,7 +81,7 @@ export function loadMountAllowlist(): MountAllowlist | null {
     cachedAllowlist = allowlist;
     logger.info(
       {
-        path: MOUNT_ALLOWLIST_PATH,
+        source: 'embedded',
         allowedRoots: allowlist.allowedRoots.length,
         blockedPatterns: allowlist.blockedPatterns.length,
       },
@@ -104,11 +90,10 @@ export function loadMountAllowlist(): MountAllowlist | null {
 
     return cachedAllowlist;
   } catch (err) {
-    allowlistLoadError = err instanceof Error ? err.message : String(err);
     logger.error(
       {
-        path: MOUNT_ALLOWLIST_PATH,
-        error: allowlistLoadError,
+        source: 'embedded',
+        error: err instanceof Error ? err.message : String(err),
       },
       'Failed to load mount allowlist - additional mounts will be BLOCKED',
     );
@@ -237,7 +222,7 @@ export function validateMount(
   if (allowlist === null) {
     return {
       allowed: false,
-      reason: `No mount allowlist configured at ${MOUNT_ALLOWLIST_PATH}`,
+      reason: 'No mount allowlist configured in src/config.ts',
     };
   }
 
@@ -385,30 +370,9 @@ export function validateAdditionalMounts(
  * Generate a template allowlist file for users to customize
  */
 export function generateAllowlistTemplate(): string {
-  const template: MountAllowlist = {
-    allowedRoots: [
-      {
-        path: '~/projects',
-        allowReadWrite: true,
-        description: 'Development projects',
-      },
-      {
-        path: '~/repos',
-        allowReadWrite: true,
-        description: 'Git repositories',
-      },
-      {
-        path: '~/Documents/work',
-        allowReadWrite: false,
-        description: 'Work documents (read-only)',
-      },
-    ],
-    blockedPatterns: [
-      // Additional patterns beyond defaults
-      'password',
-      'secret',
-      'token',
-    ],
+  const template: MountAllowlist = loadMountAllowlist() ?? {
+    allowedRoots: [],
+    blockedPatterns: [],
     nonMainReadOnly: true,
   };
 
