@@ -114,6 +114,7 @@ SMTP_PASS=app-password-or-mail-password
 Notes:
 
 - Email chats use JIDs in the form `email:alice@example.com`
+- The first inbound email from a sender auto-registers a direct-chat group for that address
 - The channel polls unread mail from `INBOX`
 - Incoming mail stores the subject in the message body as `[Subject] ...`
 - Replies go out over SMTP and keep the original email thread metadata when available

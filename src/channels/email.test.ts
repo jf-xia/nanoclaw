@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { RegisteredGroup } from '../types.js';
+
 const envRef = vi.hoisted(() => ({ current: {} as Record<string, string> }));
 const parsedMailRef = vi.hoisted(
   () => new Map<string, Record<string, unknown>>(),
@@ -11,6 +13,7 @@ const transportRef = vi.hoisted(() => ({
   },
 }));
 const imapBehaviorRef = vi.hoisted(() => ({
+  status: vi.fn<() => Promise<{ uidNext: number }>>(async () => ({ uidNext: 1 })),
   search: vi.fn<() => Promise<number[] | false>>(async () => []),
   fetchOne: vi.fn<() => Promise<Record<string, unknown> | false>>(async () => false),
   messageFlagsAdd: vi.fn<() => Promise<boolean>>(async () => true),
@@ -54,6 +57,7 @@ vi.mock('imapflow', () => ({
     });
     close = vi.fn();
     getMailboxLock = vi.fn(async () => ({ release: imapBehaviorRef.release }));
+    status = imapBehaviorRef.status;
     search = imapBehaviorRef.search;
     fetchOne = imapBehaviorRef.fetchOne;
     messageFlagsAdd = imapBehaviorRef.messageFlagsAdd;
@@ -63,18 +67,23 @@ vi.mock('imapflow', () => ({
 import { EmailChannel, EmailChannelOpts } from './email.js';
 
 function createOpts(overrides?: Partial<EmailChannelOpts>): EmailChannelOpts {
+  const groups: Record<string, RegisteredGroup> = {
+    'email:alice@example.com': {
+      name: 'Alice',
+      folder: 'alice',
+      trigger: '@Andy',
+      added_at: '2024-01-01T00:00:00.000Z',
+      requiresTrigger: false,
+    },
+  };
+
   return {
     onMessage: vi.fn(),
     onChatMetadata: vi.fn(),
-    registeredGroups: vi.fn(() => ({
-      'email:alice@example.com': {
-        name: 'Alice',
-        folder: 'alice',
-        trigger: '@Andy',
-        added_at: '2024-01-01T00:00:00.000Z',
-        requiresTrigger: false,
-      },
-    })),
+    registeredGroups: vi.fn(() => groups),
+    registerGroup: vi.fn((jid: string, group: RegisteredGroup) => {
+      groups[jid] = group;
+    }),
     ...overrides,
   };
 }
@@ -112,6 +121,8 @@ describe('EmailChannel', () => {
       messageId: '<sent-1@example.com>',
     });
     imapBehaviorRef.search.mockResolvedValue([]);
+    imapBehaviorRef.status.mockResolvedValue({ uidNext: 1 });
+    imapBehaviorRef.status.mockClear();
     imapBehaviorRef.search.mockClear();
     imapBehaviorRef.fetchOne.mockResolvedValue(false);
     imapBehaviorRef.fetchOne.mockClear();
@@ -137,6 +148,7 @@ describe('EmailChannel', () => {
     const channel = new EmailChannel(createConfig(), opts);
 
     imapBehaviorRef.search.mockResolvedValue([101]);
+    imapBehaviorRef.status.mockResolvedValue({ uidNext: 102 });
     imapBehaviorRef.fetchOne.mockResolvedValue({
       uid: 101,
       source: Buffer.from('message-101'),
@@ -185,11 +197,18 @@ describe('EmailChannel', () => {
     await channel.disconnect();
   });
 
-  it('stores metadata but skips delivery for unregistered email chats', async () => {
-    const opts = createOpts({ registeredGroups: vi.fn(() => ({})) });
+  it('auto-registers unregistered email chats and delivers the first message', async () => {
+    const groups: Record<string, RegisteredGroup> = {};
+    const opts = createOpts({
+      registeredGroups: vi.fn(() => groups),
+      registerGroup: vi.fn((jid: string, group: RegisteredGroup) => {
+        groups[jid] = group;
+      }),
+    });
     const channel = new EmailChannel(createConfig(), opts);
 
     imapBehaviorRef.search.mockResolvedValue([202]);
+    imapBehaviorRef.status.mockResolvedValue({ uidNext: 203 });
     imapBehaviorRef.fetchOne.mockResolvedValue({
       uid: 202,
       source: Buffer.from('message-202'),
@@ -214,7 +233,23 @@ describe('EmailChannel', () => {
       'email',
       false,
     );
-    expect(opts.onMessage).not.toHaveBeenCalled();
+    expect(opts.registerGroup).toHaveBeenCalledWith(
+      'email:bob@example.com',
+      expect.objectContaining({
+        name: 'Bob',
+        trigger: '@Andy',
+        requiresTrigger: false,
+      }),
+    );
+    expect(opts.onMessage).toHaveBeenCalledWith(
+      'email:bob@example.com',
+      expect.objectContaining({
+        id: '<m2@example.com>',
+        sender: 'bob@example.com',
+        sender_name: 'Bob',
+        content: '[Subject] FYI\n\nNot registered',
+      }),
+    );
 
     await channel.disconnect();
   });
@@ -224,6 +259,7 @@ describe('EmailChannel', () => {
     const channel = new EmailChannel(createConfig(), opts);
 
     imapBehaviorRef.search.mockResolvedValue([303]);
+    imapBehaviorRef.status.mockResolvedValue({ uidNext: 304 });
     imapBehaviorRef.fetchOne.mockResolvedValue({
       uid: 303,
       source: Buffer.from('message-303'),
@@ -271,5 +307,63 @@ describe('EmailChannel', () => {
 
     await channel.disconnect();
     expect(channel.isConnected()).toBe(false);
+  });
+
+  it('processes newly arrived messages even when they are already marked seen', async () => {
+    const groups: Record<string, RegisteredGroup> = {};
+    const opts = createOpts({
+      registeredGroups: vi.fn(() => groups),
+      registerGroup: vi.fn((jid: string, group: RegisteredGroup) => {
+        groups[jid] = group;
+      }),
+    });
+    const channel = new EmailChannel(createConfig(), opts);
+
+    imapBehaviorRef.status
+      .mockResolvedValueOnce({ uidNext: 404 })
+      .mockResolvedValueOnce({ uidNext: 405 });
+    imapBehaviorRef.search.mockResolvedValue([]);
+    imapBehaviorRef.fetchOne.mockResolvedValue({
+      uid: 404,
+      source: Buffer.from('message-404'),
+      internalDate: new Date('2024-01-04T00:00:00.000Z'),
+    });
+    parsedMailRef.set('message-404', {
+      from: {
+        value: [{ address: 'eve@example.com', name: 'Eve' }],
+      },
+      attachments: [],
+      subject: 'Seen already',
+      text: 'Still should be processed',
+      messageId: '<m4@example.com>',
+      date: new Date('2024-01-04T00:00:00.000Z'),
+    });
+
+    await channel.connect();
+    await (channel as unknown as { pollInbox: () => Promise<void> }).pollInbox();
+
+    expect(opts.registerGroup).toHaveBeenCalledWith(
+      'email:eve@example.com',
+      expect.objectContaining({
+        name: 'Eve',
+        trigger: '@Andy',
+        requiresTrigger: false,
+      }),
+    );
+    expect(opts.onMessage).toHaveBeenCalledWith(
+      'email:eve@example.com',
+      expect.objectContaining({
+        id: '<m4@example.com>',
+        sender: 'eve@example.com',
+        content: '[Subject] Seen already\n\nStill should be processed',
+      }),
+    );
+    expect(imapBehaviorRef.messageFlagsAdd).toHaveBeenCalledWith(
+      404,
+      ['\\Seen'],
+      { uid: true },
+    );
+
+    await channel.disconnect();
   });
 });

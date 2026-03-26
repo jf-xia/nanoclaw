@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 import { ImapFlow, FetchMessageObject } from 'imapflow';
 import { ParsedMail, simpleParser } from 'mailparser';
 import nodemailer, { Transporter } from 'nodemailer';
@@ -24,6 +26,7 @@ export interface EmailChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
+  registerGroup: (jid: string, group: RegisteredGroup) => void;
 }
 
 interface EmailChannelConfig {
@@ -129,6 +132,17 @@ function buildInboundContent(mail: ParsedMail): string {
   return lines.join('\n').trim();
 }
 
+function buildEmailGroupFolder(address: string): string {
+  const normalized = normalizeAddress(address);
+  const sanitized = normalized
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+  const suffix = createHash('sha256').update(normalized).digest('hex').slice(0, 8);
+  const base = sanitized || 'inbox';
+  return `email_${base}_${suffix}`.slice(0, 64);
+}
+
 function loadEmailConfig(): EmailChannelConfig | null {
   const envVars = readEnvFile([
     'IMAP_HOST',
@@ -150,14 +164,17 @@ function loadEmailConfig(): EmailChannelConfig | null {
   const smtpUser = process.env.SMTP_USER || envVars.SMTP_USER || '';
   const smtpPass = process.env.SMTP_PASS || envVars.SMTP_PASS || '';
 
-  if (
-    !imapHost ||
-    !imapUser ||
-    !imapPass ||
-    !smtpHost ||
-    !smtpUser ||
-    !smtpPass
-  ) {
+  const missingKeys = [
+    !imapHost ? 'IMAP_HOST' : null,
+    !imapUser ? 'IMAP_USER' : null,
+    !imapPass ? 'IMAP_PASS' : null,
+    !smtpHost ? 'SMTP_HOST' : null,
+    !smtpUser ? 'SMTP_USER' : null,
+    !smtpPass ? 'SMTP_PASS' : null,
+  ].filter((value): value is string => value !== null);
+
+  if (missingKeys.length > 0) {
+    logger.warn({ missingKeys }, 'Email: IMAP/SMTP settings not fully configured');
     return null;
   }
 
@@ -201,6 +218,7 @@ export class EmailChannel implements Channel {
   private connected = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private polling = false;
+  private lastSeenUid = 0;
 
   constructor(config: EmailChannelConfig, opts: EmailChannelOpts) {
     this.config = config;
@@ -216,6 +234,15 @@ export class EmailChannel implements Channel {
     });
 
     await this.transporter.verify();
+    logger.info(
+      {
+        smtpHost: this.config.smtp.host,
+        smtpPort: this.config.smtp.port,
+        secure: this.config.smtp.secure,
+        email: this.config.smtp.auth.user,
+      },
+      'Email SMTP transport verified',
+    );
     await this.ensureImapConnected();
     await this.pollInbox();
 
@@ -307,6 +334,16 @@ export class EmailChannel implements Channel {
   private async ensureImapConnected(): Promise<void> {
     if (this.imapClient?.usable) return;
 
+    logger.info(
+      {
+        imapHost: this.config.imap.host,
+        imapPort: this.config.imap.port,
+        secure: this.config.imap.secure,
+        email: this.config.imap.auth.user,
+      },
+      'Connecting email IMAP client',
+    );
+
     const client = new ImapFlow({
       host: this.config.imap.host,
       port: this.config.imap.port,
@@ -326,6 +363,7 @@ export class EmailChannel implements Channel {
     await client.connect();
     this.imapClient = client;
     this.connected = true;
+    logger.info({ mailbox: 'INBOX' }, 'Email IMAP client connected');
   }
 
   private async pollInbox(): Promise<void> {
@@ -339,10 +377,37 @@ export class EmailChannel implements Channel {
 
       const lock = await client.getMailboxLock('INBOX');
       try {
-        const unseen = await client.search({ seen: false }, { uid: true });
-        if (!unseen || unseen.length === 0) return;
+        const status = await client.status('INBOX', { uidNext: true });
+        const highestUid =
+          typeof status.uidNext === 'number' && status.uidNext > 0
+            ? status.uidNext - 1
+            : 0;
+        if (this.lastSeenUid === 0 && highestUid > 0) {
+          this.lastSeenUid = highestUid;
+        }
 
-        for (const uid of unseen) {
+        const unseen = await client.search({ seen: false }, { uid: true });
+        const newUidRange: number[] = [];
+        if (highestUid > this.lastSeenUid) {
+          for (let uid = this.lastSeenUid + 1; uid <= highestUid; uid += 1) {
+            newUidRange.push(uid);
+          }
+        }
+        const candidates = [...new Set([...(unseen || []), ...newUidRange])].sort(
+          (left, right) => left - right,
+        );
+        if (candidates.length === 0) return;
+
+        logger.info(
+          {
+            unseenCount: Array.isArray(unseen) ? unseen.length : 0,
+            newUidCount: newUidRange.length,
+            mailbox: 'INBOX',
+          },
+          'Email inbox poll found messages to process',
+        );
+
+        for (const uid of candidates) {
           const message = await client.fetchOne(
             String(uid),
             {
@@ -356,12 +421,14 @@ export class EmailChannel implements Channel {
 
           if (!message || !message.source) {
             await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+            this.lastSeenUid = Math.max(this.lastSeenUid, uid);
             continue;
           }
 
           const processed = await this.processInboundMessage(message);
           if (processed) {
             await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+            this.lastSeenUid = Math.max(this.lastSeenUid, uid);
           }
         }
       } finally {
@@ -396,34 +463,72 @@ export class EmailChannel implements Channel {
     const rawDate = mail.date || message.internalDate || new Date();
     const timestamp =
       rawDate instanceof Date ? rawDate.toISOString() : new Date(rawDate).toISOString();
+    const subject = normalizeSubject(mail.subject);
+    const messageId = mail.messageId?.trim() || `uid:${message.uid || Date.now()}`;
+    const content = buildInboundContent(mail);
 
     this.opts.onChatMetadata(chatJid, timestamp, senderName, 'email', false);
 
-    const group = this.opts.registeredGroups()[chatJid];
+    let group = this.opts.registeredGroups()[chatJid];
     if (!group) {
-      logger.debug({ chatJid, senderAddress }, 'Message from unregistered email chat');
-      return true;
+      const folder = buildEmailGroupFolder(senderAddress);
+      logger.warn(
+        { chatJid, senderAddress, folder },
+        'Auto-registering inbound email chat',
+      );
+      this.opts.registerGroup(chatJid, {
+        name: senderName,
+        folder,
+        trigger: `@${ASSISTANT_NAME}`,
+        added_at: new Date().toISOString(),
+        requiresTrigger: false,
+      });
+      group = this.opts.registeredGroups()[chatJid];
+      if (!group) {
+        logger.error(
+          { chatJid, senderAddress, folder },
+          'Email chat registration did not persist',
+        );
+        return false;
+      }
     }
 
-    const messageId = mail.messageId?.trim() || `uid:${message.uid || Date.now()}`;
+    logger.info(
+      {
+        uid: message.uid,
+        chatJid,
+        senderAddress,
+        replyAddress,
+        messageId,
+        subject,
+        attachmentCount: mail.attachments.length,
+        bodyLength: content.length,
+        groupFolder: group.folder,
+      },
+      'Processing inbound email message',
+    );
+
     this.opts.onMessage(chatJid, {
       id: messageId,
       chat_jid: chatJid,
       sender: senderAddress,
       sender_name: senderName,
-      content: buildInboundContent(mail),
+      content,
       timestamp,
       is_from_me: false,
     });
 
     this.threadState.set(chatJid, {
-      subject: normalizeSubject(mail.subject),
+      subject,
       replyAddress,
       inReplyTo: mail.messageId?.trim(),
       references: collectReferences(mail, mail.messageId?.trim()),
     });
 
-    logger.info({ chatJid, senderAddress, subject: mail.subject }, 'Email message stored');
+    logger.info(
+      { chatJid, senderAddress, subject, messageId },
+      'Email message stored',
+    );
     return true;
   }
 }
@@ -431,7 +536,6 @@ export class EmailChannel implements Channel {
 registerChannel('email', (opts: ChannelOpts) => {
   const config = loadEmailConfig();
   if (!config) {
-    logger.warn('Email: IMAP/SMTP settings not fully configured');
     return null;
   }
 
