@@ -1,30 +1,117 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { EventEmitter } from 'events';
-import { PassThrough } from 'stream';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockSpawn } = vi.hoisted(() => ({
-  mockSpawn: vi.fn(),
+const runtime = vi.hoisted(() => {
+  const mockReadEnvFile = vi.fn(() => ({}));
+  const mockExistsSync = vi.fn((target: string) => {
+    if (target.endsWith('/node_modules/.bin/copilot')) return true;
+    if (target === '/tmp/nanoclaw-project') return true;
+    return false;
+  });
+
+  let closeRequested = false;
+  let sessionId = 'session-123';
+  let sessionMessages: unknown[] = [];
+  const generalHandlers = new Set<(event: unknown) => void>();
+  const namedHandlers = new Map<string, Set<(event?: any) => void>>();
+
+  const fakeSession = {
+    get sessionId() {
+      return sessionId;
+    },
+    on: vi.fn(
+      (
+        eventOrHandler: string | ((event: unknown) => void),
+        handler?: (event?: any) => void,
+      ) => {
+        if (typeof eventOrHandler === 'function') {
+          generalHandlers.add(eventOrHandler);
+          return () => generalHandlers.delete(eventOrHandler);
+        }
+
+        const handlers = namedHandlers.get(eventOrHandler) ?? new Set();
+        handlers.add(handler!);
+        namedHandlers.set(eventOrHandler, handlers);
+        return () => handlers.delete(handler!);
+      },
+    ),
+    send: vi.fn(async () => undefined),
+    disconnect: vi.fn(async () => undefined),
+    getMessages: vi.fn(async () => sessionMessages),
+  };
+
+  class FakeCopilotClient {
+    static instances: FakeCopilotClient[] = [];
+
+    options: Record<string, any>;
+    start = vi.fn(async () => undefined);
+    stop = vi.fn(async () => undefined);
+    createSession = vi.fn(async () => fakeSession);
+    resumeSession = vi.fn(async () => fakeSession);
+
+    constructor(options: Record<string, any>) {
+      this.options = options;
+      FakeCopilotClient.instances.push(this);
+    }
+  }
+
+  return {
+    FakeCopilotClient,
+    mockReadEnvFile,
+    mockExistsSync,
+    reset: () => {
+      closeRequested = false;
+      sessionId = 'session-123';
+      sessionMessages = [];
+      generalHandlers.clear();
+      namedHandlers.clear();
+      fakeSession.on.mockClear();
+      fakeSession.send.mockClear();
+      fakeSession.disconnect.mockClear();
+      fakeSession.getMessages.mockClear();
+      FakeCopilotClient.instances.length = 0;
+      mockReadEnvFile.mockReset();
+      mockReadEnvFile.mockReturnValue({});
+      mockExistsSync.mockReset();
+      mockExistsSync.mockImplementation((target: string) => {
+        if (target.endsWith('/node_modules/.bin/copilot')) return true;
+        if (target === '/tmp/nanoclaw-project') return true;
+        if (target.endsWith('_close')) return closeRequested;
+        return false;
+      });
+    },
+    emitAssistantMessage: (content: string) => {
+      for (const handler of generalHandlers) {
+        handler({
+          type: 'assistant.message',
+          data: { content, parentToolCallId: undefined },
+        });
+      }
+    },
+    emitIdle: () => {
+      const handlers = namedHandlers.get('session.idle');
+      if (!handlers) return;
+      for (const handler of handlers) handler();
+    },
+    setCloseRequested: (value: boolean) => {
+      closeRequested = value;
+    },
+  };
+});
+
+vi.mock('@github/copilot-sdk', () => ({
+  approveAll: vi.fn(),
+  CopilotClient: runtime.FakeCopilotClient,
 }));
 
-const { mockReadEnvFile } = vi.hoisted(() => ({
-  mockReadEnvFile: vi.fn(() => ({})),
-}));
-
-// Sentinel markers must match container-runner.ts
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
-
-// Mock config
 vi.mock('./config.js', () => ({
-  CONTAINER_MAX_OUTPUT_SIZE: 10485760,
-  CONTAINER_TIMEOUT: 1800000, // 30min
+  CONTAINER_TIMEOUT: 1800000,
   DATA_DIR: '/tmp/nanoclaw-test-data',
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
-  IDLE_TIMEOUT: 1800000, // 30min
+  IDLE_TIMEOUT: 1800000,
+  PROJECT_ROOT: '/tmp/nanoclaw-project',
   TIMEZONE: 'America/Los_Angeles',
 }));
 
-// Mock logger
 vi.mock('./logger.js', () => ({
   logger: {
     debug: vi.fn(),
@@ -34,66 +121,30 @@ vi.mock('./logger.js', () => ({
   },
 }));
 
-// Mock container-runtime
-vi.mock('./container-runtime.js', () => ({
-  getAgentRunnerPath: vi.fn(() => '/fake/agent-runner/dist/index.js'),
+vi.mock('./env.js', () => ({
+  readEnvFile: runtime.mockReadEnvFile,
 }));
 
-// Mock fs
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
     ...actual,
     default: {
       ...actual,
-      existsSync: vi.fn(() => false),
+      existsSync: (...args: [string]) => runtime.mockExistsSync(...args),
       mkdirSync: vi.fn(),
       writeFileSync: vi.fn(),
       readFileSync: vi.fn(() => ''),
       readdirSync: vi.fn(() => []),
       statSync: vi.fn(() => ({ isDirectory: () => false })),
       cpSync: vi.fn(),
+      unlinkSync: vi.fn(),
     },
   };
 });
 
-// Mock env.js
-vi.mock('./env.js', () => ({
-  readEnvFile: mockReadEnvFile,
-}));
-
-// Create a controllable fake ChildProcess
-function createFakeProcess() {
-  const proc = new EventEmitter() as EventEmitter & {
-    stdin: PassThrough;
-    stdout: PassThrough;
-    stderr: PassThrough;
-    kill: ReturnType<typeof vi.fn>;
-    killed: boolean;
-    pid: number;
-  };
-  proc.stdin = new PassThrough();
-  proc.stdout = new PassThrough();
-  proc.stderr = new PassThrough();
-  proc.kill = vi.fn();
-  proc.killed = false;
-  proc.pid = 12345;
-  return proc;
-}
-
-let fakeProc: ReturnType<typeof createFakeProcess>;
-
-// Mock child_process.spawn
-vi.mock('child_process', async () => {
-  const actual =
-    await vi.importActual<typeof import('child_process')>('child_process');
-  return {
-    ...actual,
-    spawn: mockSpawn,
-  };
-});
-
-import { runContainerAgent, ContainerOutput } from './container-runner.js';
+import fs from 'fs';
+import { runContainerAgent } from './container-runner.js';
 import type { RegisteredGroup } from './types.js';
 
 const testGroup: RegisteredGroup = {
@@ -110,22 +161,16 @@ const testInput = {
   isMain: false,
 };
 
-function emitOutputMarker(
-  proc: ReturnType<typeof createFakeProcess>,
-  output: ContainerOutput,
-) {
-  const json = JSON.stringify(output);
-  proc.stdout.push(`${OUTPUT_START_MARKER}\n${json}\n${OUTPUT_END_MARKER}\n`);
+async function flushStartup(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
-describe('agent-runner timeout behavior', () => {
+describe('runContainerAgent', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    fakeProc = createFakeProcess();
-    mockSpawn.mockClear();
-    mockSpawn.mockImplementation(() => fakeProc);
-    mockReadEnvFile.mockReset();
-    mockReadEnvFile.mockReturnValue({});
+    runtime.reset();
     delete process.env.GITHUB_TOKEN;
     delete process.env.COPILOT_GITHUB_TOKEN;
     delete process.env.NANOCLAW_COPILOT_GITHUB_TOKEN;
@@ -136,35 +181,19 @@ describe('agent-runner timeout behavior', () => {
     vi.useRealTimers();
   });
 
-  it('timeout after output resolves as success', async () => {
+  it('treats idle timeout after streamed output as success', async () => {
     const onOutput = vi.fn(async () => {});
-    const resultPromise = runContainerAgent(
-      testGroup,
-      testInput,
-      () => {},
-      onOutput,
-    );
 
-    // Emit output with a result
-    emitOutputMarker(fakeProc, {
-      status: 'success',
-      result: 'Here is my response',
-      newSessionId: 'session-123',
-    });
+    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, onOutput);
+    await flushStartup();
 
-    // Let output processing settle
-    await vi.advanceTimersByTimeAsync(10);
+    runtime.emitAssistantMessage('Here is my response');
+    runtime.emitIdle();
+    await Promise.resolve();
 
-    // Fire the hard timeout (IDLE_TIMEOUT + 30s = 1830000ms)
     await vi.advanceTimersByTimeAsync(1830000);
-
-    // Emit close event (as if agent was stopped by the timeout)
-    fakeProc.emit('close', 137);
-
-    // Let the promise resolve
-    await vi.advanceTimersByTimeAsync(10);
-
     const result = await resultPromise;
+
     expect(result.status).toBe('success');
     expect(result.newSessionId).toBe('session-123');
     expect(onOutput).toHaveBeenCalledWith(
@@ -172,146 +201,75 @@ describe('agent-runner timeout behavior', () => {
     );
   });
 
-  it('timeout with no output resolves as error', async () => {
+  it('returns error when the session times out without output', async () => {
     const onOutput = vi.fn(async () => {});
-    const resultPromise = runContainerAgent(
-      testGroup,
-      testInput,
-      () => {},
-      onOutput,
-    );
 
-    // No output emitted — fire the hard timeout
+    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, onOutput);
+    await flushStartup();
+
     await vi.advanceTimersByTimeAsync(1830000);
-
-    // Emit close event
-    fakeProc.emit('close', 137);
-
-    await vi.advanceTimersByTimeAsync(10);
-
     const result = await resultPromise;
+
     expect(result.status).toBe('error');
     expect(result.error).toContain('timed out');
-    expect(onOutput).not.toHaveBeenCalled();
+    expect(onOutput).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'error' }),
+    );
   });
 
-  it('normal exit after output resolves as success', async () => {
-    const onOutput = vi.fn(async () => {});
-    const resultPromise = runContainerAgent(
-      testGroup,
-      testInput,
-      () => {},
-      onOutput,
-    );
+  it('returns once the close sentinel is observed after a query', async () => {
+    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, undefined);
+    await flushStartup();
 
-    // Emit output
-    emitOutputMarker(fakeProc, {
-      status: 'success',
-      result: 'Done',
-      newSessionId: 'session-456',
-    });
-
-    await vi.advanceTimersByTimeAsync(10);
-
-    // Normal exit (no timeout)
-    fakeProc.emit('close', 0);
-
-    await vi.advanceTimersByTimeAsync(10);
+    runtime.emitAssistantMessage('Done');
+    runtime.emitIdle();
+    runtime.setCloseRequested(true);
+    await vi.advanceTimersByTimeAsync(500);
 
     const result = await resultPromise;
     expect(result.status).toBe('success');
-    expect(result.newSessionId).toBe('session-456');
+    expect(result.newSessionId).toBe('session-123');
   });
 
-  it('spawns node with agent-runner path and sets workspace env vars', async () => {
-    const resultPromise = runContainerAgent(
-      testGroup,
-      testInput,
-      () => {},
-      undefined,
-    );
-
-    const spawnCall = mockSpawn.mock.calls.at(0);
-    expect(spawnCall).toBeDefined();
-    const [cmd, args, opts] = spawnCall as [
-      string,
-      string[],
-      { env: NodeJS.ProcessEnv; cwd: string },
-    ];
-
-    // Spawns node directly
-    expect(cmd).toBe('node');
-    expect(args).toEqual(['/fake/agent-runner/dist/index.js']);
-
-    // Sets workspace env vars
-    expect(opts.env).toMatchObject({
-      NANOCLAW_IPC_DIR: expect.stringContaining('ipc'),
-      NANOCLAW_SESSION_DIR: expect.stringContaining('.copilot'),
-      NANOCLAW_GROUP_DIR: expect.any(String),
-    });
-
-    fakeProc.emit('close', 0);
-    await vi.advanceTimersByTimeAsync(10);
-
-    await resultPromise;
-  });
-
-  it('does not forward generic GITHUB_TOKEN into the agent environment', async () => {
+  it('sanitizes Copilot token env vars but keeps Anthropic credentials', async () => {
     process.env.GITHUB_TOKEN = 'host-token';
-    mockReadEnvFile.mockReturnValue({ GITHUB_TOKEN: 'dotenv-token' });
-
-    const resultPromise = runContainerAgent(
-      testGroup,
-      testInput,
-      () => {},
-      undefined,
-    );
-
-    const spawnCall = mockSpawn.mock.calls.at(0);
-    expect(spawnCall).toBeDefined();
-    const [, , opts] = spawnCall as [
-      string,
-      string[],
-      { env: NodeJS.ProcessEnv; cwd: string },
-    ];
-
-    expect(opts.env.GITHUB_TOKEN).toBeUndefined();
-
-    fakeProc.emit('close', 0);
-    await vi.advanceTimersByTimeAsync(10);
-    await resultPromise;
-  });
-
-  it('keeps Anthropic provider credentials but strips dedicated Copilot token envs', async () => {
-    mockReadEnvFile.mockReturnValue({
+    runtime.mockReadEnvFile.mockReturnValue({
       ANTHROPIC_API_KEY: 'anthropic-key',
       COPILOT_GITHUB_TOKEN: 'copilot-token',
     });
 
-    const resultPromise = runContainerAgent(
-      testGroup,
-      testInput,
-      () => {},
-      undefined,
-    );
+    const resultPromise = runContainerAgent(testGroup, testInput, () => {}, undefined);
+    await flushStartup();
+    runtime.emitIdle();
+    runtime.setCloseRequested(true);
+    await vi.advanceTimersByTimeAsync(500);
+    await resultPromise;
 
-    const spawnCall = mockSpawn.mock.calls.at(0);
-    expect(spawnCall).toBeDefined();
-    const [, , opts] = spawnCall as [
-      string,
-      string[],
-      { env: NodeJS.ProcessEnv; cwd: string },
-    ];
-
-    expect(opts.env).toMatchObject({
+    const client = runtime.FakeCopilotClient.instances[0];
+    expect(client).toBeDefined();
+    expect(client.options.env).toMatchObject({
       ANTHROPIC_API_KEY: 'anthropic-key',
     });
-    expect(opts.env.NANOCLAW_COPILOT_GITHUB_TOKEN).toBeUndefined();
-    expect(opts.env.COPILOT_GITHUB_TOKEN).toBeUndefined();
-    expect(opts.env.GITHUB_TOKEN).toBeUndefined();
+    expect(client.options.env.GITHUB_TOKEN).toBeUndefined();
+    expect(client.options.env.COPILOT_GITHUB_TOKEN).toBeUndefined();
+    expect(client.options.env.NANOCLAW_COPILOT_GITHUB_TOKEN).toBeUndefined();
+    expect(client.options.cliPath).toContain('/node_modules/.bin/copilot');
+  });
 
-    fakeProc.emit('close', 0);
-    await vi.advanceTimersByTimeAsync(10);
+  it('registers runtime metadata for the active agent', async () => {
+    const onProcess = vi.fn();
+
+    const resultPromise = runContainerAgent(testGroup, testInput, onProcess, undefined);
+    await flushStartup();
+    runtime.emitIdle();
+    runtime.setCloseRequested(true);
+    await vi.advanceTimersByTimeAsync(500);
     await resultPromise;
+
+    expect(onProcess).toHaveBeenCalledWith(
+      expect.stringContaining('nanoclaw-test-group-'),
+      'test-group',
+    );
+    expect(vi.mocked(fs.mkdirSync)).toHaveBeenCalled();
   });
 });

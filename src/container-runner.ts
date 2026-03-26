@@ -233,8 +233,7 @@ function waitForIpcMessage(
       const messages = drainIpcInput(inputDir);
       if (messages.length > 0) {
         cleanup();
-        resolve(messages.join('
-'));
+        resolve(messages.join('\n'));
         return;
       }
       pollTimer = setTimeout(poll, IPC_POLL_MS);
@@ -322,8 +321,7 @@ function formatTranscriptMarkdown(
     lines.push('');
   }
 
-  return lines.join('
-');
+  return lines.join('\n');
 }
 
 async function archiveConversation(
@@ -402,8 +400,7 @@ function loadAgentInstructions(
     contextSections.push('');
   }
 
-  return contextSections.length > 0 ? contextSections.join('
-') : undefined;
+  return contextSections.length > 0 ? contextSections.join('\n') : undefined;
 }
 
 function buildCliArgs(
@@ -705,16 +702,12 @@ async function runQuery(
 function buildInitialPrompt(input: ContainerInput, inputDir: string): string {
   let prompt = input.prompt;
   if (input.isScheduledTask) {
-    prompt = `[SCHEDULED TASK - The following message was sent automatically and is not coming directly from the user or group.]
-
-${prompt}`;
+    prompt = `[SCHEDULED TASK - The following message was sent automatically and is not coming directly from the user or group.]\n\n${prompt}`;
   }
 
   const pending = drainIpcInput(inputDir);
   if (pending.length > 0) {
-    prompt += `
-${pending.join('
-')}`;
+    prompt += `\n${pending.join('\n')}`;
   }
 
   return prompt;
@@ -746,8 +739,7 @@ function writeRunLog(
     lines.push('', '=== Error ===', error);
   }
 
-  fs.writeFileSync(logFile, lines.join('
-'));
+  fs.writeFileSync(logFile, lines.join('\n'));
 }
 
 export async function runContainerAgent(

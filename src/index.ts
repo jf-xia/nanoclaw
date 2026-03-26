@@ -439,7 +439,7 @@ async function startMessageLoop(): Promise<void> {
           if (queue.sendMessage(chatJid, formatted)) {
             logger.debug(
               { chatJid, count: messagesToSend.length },
-              'Piped messages to active container',
+              'Piped messages to active agent',
             );
             lastAgentTimestamp[chatJid] =
               messagesToSend[messagesToSend.length - 1].timestamp;
@@ -451,7 +451,7 @@ async function startMessageLoop(): Promise<void> {
                 logger.warn({ chatJid, err }, 'Failed to set typing indicator'),
               );
           } else {
-            // No active container — enqueue for a new one
+            // No active agent — enqueue for a new run
             queue.enqueueMessageCheck(chatJid);
           }
         }
@@ -613,8 +613,8 @@ async function main(): Promise<void> {
     registeredGroups: () => registeredGroups,
     getSessions: () => sessions,
     queue,
-    onProcess: (groupJid, proc, containerName, groupFolder) =>
-      queue.registerProcess(groupJid, proc, containerName, groupFolder),
+    onProcess: (groupJid, agentId, groupFolder) =>
+      queue.registerProcess(groupJid, agentId, groupFolder),
     sendMessage: async (jid, rawText) => {
       const channel = findChannel(channels, jid);
       if (!channel) {

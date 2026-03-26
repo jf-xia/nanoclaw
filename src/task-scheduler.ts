@@ -1,4 +1,3 @@
-import { ChildProcess } from 'child_process';
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
@@ -68,8 +67,7 @@ export interface SchedulerDependencies {
   queue: GroupQueue;
   onProcess: (
     groupJid: string,
-    proc: ChildProcess,
-    containerName: string,
+    agentId: string,
     groupFolder: string,
   ) => void;
   sendMessage: (jid: string, text: string) => Promise<void>;
@@ -154,7 +152,7 @@ async function runTask(
   const sessionId =
     task.context_mode === 'group' ? sessions[task.group_folder] : undefined;
 
-  // After the task produces a result, close the container promptly.
+  // After the task produces a result, close the agent promptly.
   // Tasks are single-turn — no need to wait IDLE_TIMEOUT (30 min) for the
   // query loop to time out. A short delay handles any final MCP calls.
   const TASK_CLOSE_DELAY_MS = 10000;
@@ -163,7 +161,7 @@ async function runTask(
   const scheduleClose = () => {
     if (closeTimer) return; // already scheduled
     closeTimer = setTimeout(() => {
-      logger.debug({ taskId: task.id }, 'Closing task container after result');
+      logger.debug({ taskId: task.id }, 'Closing task agent after result');
       deps.queue.closeStdin(task.chat_jid);
     }, TASK_CLOSE_DELAY_MS);
   };
@@ -180,8 +178,8 @@ async function runTask(
         isScheduledTask: true,
         assistantName: ASSISTANT_NAME,
       },
-      (proc, containerName) =>
-        deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
+      (agentId, groupFolder) =>
+        deps.onProcess(task.chat_jid, agentId, groupFolder),
       async (streamedOutput: ContainerOutput) => {
         if (streamedOutput.result) {
           result = streamedOutput.result;
