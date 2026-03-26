@@ -171,7 +171,7 @@ tail -f logs/nanoclaw.log
 
 Check:
 1. `TELEGRAM_BOT_TOKEN` is set in `.env` AND synced to `data/env/env`
-2. Chat is registered in SQLite (check with: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'tg:%'"`)
+2. Chat is registered in `data/registered_groups.json` (look for the Telegram JID)
 3. For non-main chats: message includes trigger pattern
 4. Service is running: `launchctl list | grep nanoclaw` (macOS) or `systemctl --user status nanoclaw` (Linux)
 
@@ -217,6 +217,6 @@ To remove Telegram integration:
 1. Delete `src/channels/telegram.ts` and `src/channels/telegram.test.ts`
 2. Remove `import './telegram.js'` from `src/channels/index.ts`
 3. Remove `TELEGRAM_BOT_TOKEN` from `.env`
-4. Remove Telegram registrations from SQLite: `sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'tg:%'"`
+4. Remove Telegram entries from `data/registered_groups.json`
 5. Uninstall: `npm uninstall grammy`
 6. Rebuild: `npm run build && launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `npm run build && systemctl --user restart nanoclaw` (Linux)

@@ -99,7 +99,7 @@ Mount validation still happens on the host. Check:
 ```bash
 rg -n "DEFAULT_MOUNT_ALLOWLIST" src/config.ts
 grep -E 'Mount validated|Mount.*REJECTED' logs/nanoclaw.log | tail -20
-sqlite3 store/messages.db "SELECT name, container_config FROM registered_groups;"
+cat data/registered_groups.json
 ```
 
 ## Manual Runner Test

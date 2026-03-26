@@ -7,6 +7,7 @@ import {
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
+  getLastGroupSync,
   getMessagesSince,
   getNewMessages,
   getRegisteredGroup,
@@ -14,6 +15,7 @@ import {
   getSession,
   getTaskById,
   setRegisteredGroup,
+  setLastGroupSync,
   setRouterState,
   setSession,
   storeChatMetadata,
@@ -329,11 +331,38 @@ describe('storeChatMetadata', () => {
     expect(chats[0].name).toBe('Updated Name');
   });
 
+  it('stores channel and group metadata', () => {
+    storeChatMetadata(
+      'group@g.us',
+      '2024-01-01T00:00:00.000Z',
+      'My Group',
+      'whatsapp',
+      true,
+    );
+
+    const chats = getAllChats();
+    expect(chats[0].channel).toBe('whatsapp');
+    expect(chats[0].is_group).toBe(1);
+  });
+
   it('preserves newer timestamp on conflict', () => {
     storeChatMetadata('group@g.us', '2024-01-01T00:00:05.000Z');
     storeChatMetadata('group@g.us', '2024-01-01T00:00:01.000Z');
     const chats = getAllChats();
     expect(chats[0].last_message_time).toBe('2024-01-01T00:00:05.000Z');
+  });
+});
+
+describe('group sync marker', () => {
+  it('stores and retrieves the last group sync timestamp', () => {
+    expect(getLastGroupSync()).toBeNull();
+
+    setLastGroupSync();
+
+    expect(getLastGroupSync()).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+    expect(getAllChats()[0].jid).toBe('__group_sync__');
   });
 });
 

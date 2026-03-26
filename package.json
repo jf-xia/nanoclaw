@@ -23,7 +23,6 @@
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@onecli-sh/sdk": "^0.2.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
-    "better-sqlite3": "^11.10.0",
     "cron-parser": "^5.5.0",
     "grammy": "^1.39.3",
     "imapflow": "^1.2.18",
@@ -38,7 +37,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
-    "@types/better-sqlite3": "^7.6.12",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.10.0",
     "@types/nodemailer": "^7.0.11",

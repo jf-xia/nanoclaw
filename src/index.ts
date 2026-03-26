@@ -483,7 +483,7 @@ function recoverPendingMessages(): void {
 
 async function main(): Promise<void> {
   initDatabase();
-  logger.info('Database initialized');
+  logger.info('Storage initialized');
   loadState();
 
   // Ensure OneCLI agents exist for all registered groups.

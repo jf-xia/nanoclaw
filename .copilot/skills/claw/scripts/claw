@@ -21,7 +21,6 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -50,12 +49,12 @@ def _find_nanoclaw_dir() -> Path:
     # If this script lives inside the NanoClaw tree (e.g. scripts/claw), walk up
     here = Path(__file__).resolve()
     for parent in [here.parent, here.parent.parent]:
-        if (parent / "store" / "messages.db").exists() or (parent / ".env").exists():
+        if (parent / "data" / "registered_groups.json").exists() or (parent / ".env").exists():
             return parent
     return Path.home() / "src" / "nanoclaw"
 
 NANOCLAW_DIR = _find_nanoclaw_dir()
-DB_PATH      = NANOCLAW_DIR / "store" / "messages.db"
+REGISTERED_GROUPS_PATH = NANOCLAW_DIR / "data" / "registered_groups.json"
 ENV_FILE     = NANOCLAW_DIR / ".env"
 GROUPS_DIR   = NANOCLAW_DIR / "groups"
 DATA_DIR     = NANOCLAW_DIR / "data"
@@ -88,13 +87,36 @@ def read_secrets(env_file: Path) -> dict:
     return secrets
 
 
-def get_groups(db: Path) -> list[dict]:
-    conn = sqlite3.connect(db)
-    rows = conn.execute(
-        "SELECT jid, name, folder, is_main FROM registered_groups ORDER BY name"
-    ).fetchall()
-    conn.close()
-    return [{"jid": r[0], "name": r[1], "folder": r[2], "is_main": bool(r[3])} for r in rows]
+def get_groups(groups_file: Path) -> list[dict]:
+    if not groups_file.exists():
+        return []
+
+    try:
+        raw = json.loads(groups_file.read_text())
+    except json.JSONDecodeError:
+        sys.exit(f"error: invalid JSON in {groups_file}")
+
+    if not isinstance(raw, dict):
+        sys.exit(f"error: unexpected registered group format in {groups_file}")
+
+    groups: list[dict] = []
+    for jid, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        name = value.get("name")
+        folder = value.get("folder")
+        if not isinstance(name, str) or not isinstance(folder, str):
+            continue
+        groups.append(
+            {
+                "jid": jid,
+                "name": name,
+                "folder": folder,
+                "is_main": value.get("isMain") is True,
+            }
+        )
+
+    return sorted(groups, key=lambda group: group["name"].lower())
 
 
 def find_group(groups: list[dict], query: str) -> dict | None:
@@ -284,7 +306,7 @@ def main():
     global VERBOSE
     VERBOSE = args.verbose
 
-    groups = get_groups(DB_PATH) if DB_PATH.exists() else []
+    groups = get_groups(REGISTERED_GROUPS_PATH)
 
     if args.list_groups:
         print(f"{'NAME':<35} {'FOLDER':<30} {'JID'}")

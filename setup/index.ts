@@ -15,6 +15,7 @@ import { isValidGroupFolder } from '../src/group-folder.js';
 import { logger } from '../src/logger.js';
 import {
   hasRegisteredGroupsStore,
+  readAllChatsState,
   readAllRegisteredGroupsState,
   writeAllRegisteredGroupsState,
 } from '../src/state-files.js';
@@ -285,8 +286,15 @@ async function runGroupsStep(args: string[]): Promise<void> {
   const groups = listRegisteredGroups();
 
   if (list) {
-    for (const { jid, group } of groups.slice(0, limit)) {
-      console.log(`${jid}|${group.name}`);
+    const chats = Object.values(readAllChatsState())
+      .filter((chat) => chat.jid !== '__group_sync__' && chat.is_group)
+      .sort((left, right) =>
+        right.last_message_time.localeCompare(left.last_message_time),
+      )
+      .slice(0, limit);
+
+    for (const chat of chats) {
+      console.log(`${chat.jid}|${chat.name}`);
     }
     return;
   }

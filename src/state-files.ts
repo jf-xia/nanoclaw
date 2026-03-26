@@ -7,11 +7,21 @@ import { logger } from './logger.js';
 import type { RegisteredGroup } from './types.js';
 
 interface InMemoryStateStore {
+  chats: Record<string, JsonChatState>;
   routerState: Record<string, string>;
   sessions: Record<string, string>;
   registeredGroups: Record<string, RegisteredGroup>;
 }
 
+export interface JsonChatState {
+  jid: string;
+  name: string;
+  last_message_time: string;
+  channel: string;
+  is_group: number;
+}
+
+const CHATS_FILE = 'chats.json';
 const ROUTER_STATE_FILE = 'router_state.json';
 const SESSIONS_FILE = 'sessions.json';
 const REGISTERED_GROUPS_FILE = 'registered_groups.json';
@@ -69,6 +79,42 @@ function readStringMap(filename: string): Record<string, string> {
   return result;
 }
 
+function normalizeChats(raw: Record<string, unknown>): Record<string, JsonChatState> {
+  const result: Record<string, JsonChatState> = {};
+
+  for (const [jid, value] of Object.entries(raw)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      logger.warn({ jid }, 'Skipping invalid chat entry');
+      continue;
+    }
+
+    const chat = value as Partial<JsonChatState>;
+    if (
+      typeof chat.jid !== 'string' ||
+      typeof chat.name !== 'string' ||
+      typeof chat.last_message_time !== 'string'
+    ) {
+      logger.warn({ jid }, 'Skipping incomplete chat entry');
+      continue;
+    }
+
+    result[jid] = {
+      jid: chat.jid,
+      name: chat.name,
+      last_message_time: chat.last_message_time,
+      channel: typeof chat.channel === 'string' ? chat.channel : '',
+      is_group:
+        typeof chat.is_group === 'number'
+          ? chat.is_group
+          : chat.is_group
+            ? 1
+            : 0,
+    };
+  }
+
+  return result;
+}
+
 function normalizeRegisteredGroups(
   raw: Record<string, unknown>,
 ): Record<string, RegisteredGroup> {
@@ -115,6 +161,7 @@ function normalizeRegisteredGroups(
 
 export function _initInMemoryStateForTests(): void {
   inMemoryStateStore = {
+    chats: {},
     routerState: {},
     sessions: {},
     registeredGroups: {},
@@ -127,6 +174,38 @@ export function _clearInMemoryStateForTests(): void {
 
 export function hasRouterStateStore(): boolean {
   return inMemoryStateStore !== null || hasOnDiskState(ROUTER_STATE_FILE);
+}
+
+export function hasChatsStore(): boolean {
+  return inMemoryStateStore !== null || hasOnDiskState(CHATS_FILE);
+}
+
+export function readAllChatsState(): Record<string, JsonChatState> {
+  if (inMemoryStateStore) {
+    return { ...inMemoryStateStore.chats };
+  }
+  return normalizeChats(readJsonObject(CHATS_FILE));
+}
+
+export function writeAllChatsState(chats: Record<string, JsonChatState>): void {
+  const normalized = normalizeChats(chats as unknown as Record<string, unknown>);
+
+  if (inMemoryStateStore) {
+    inMemoryStateStore.chats = { ...normalized };
+    return;
+  }
+
+  atomicWriteJson(path.join(DATA_DIR, CHATS_FILE), normalized);
+}
+
+export function getChatStateValue(jid: string): JsonChatState | undefined {
+  return readAllChatsState()[jid];
+}
+
+export function setChatStateValue(jid: string, chat: JsonChatState): void {
+  const chats = readAllChatsState();
+  chats[jid] = chat;
+  writeAllChatsState(chats);
 }
 
 export function readAllRouterState(): Record<string, string> {

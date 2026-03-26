@@ -155,7 +155,7 @@ tail -f logs/nanoclaw.log
 ### Bot not responding
 
 1. Check `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set in `.env` AND synced to `data/env/env`
-2. Check channel is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'slack:%'"`
+2. Check channel is registered in `data/registered_groups.json` (look for the Slack JID)
 3. For non-main channels: message must include trigger pattern
 4. Service is running: `launchctl list | grep nanoclaw`
 

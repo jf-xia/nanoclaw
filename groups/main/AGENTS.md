@@ -87,7 +87,10 @@ Main has read-only access to the project and read-write access to its group fold
 | `/workspace/group` | `groups/main/` | read-write |
 
 Key paths inside the runtime workspace:
-- `/workspace/project/store/messages.db` - SQLite database
+- `/workspace/project/data/messages.json` - Stored message history
+- `/workspace/project/data/scheduled_tasks.json` - Scheduled task definitions
+- `/workspace/project/data/task_run_logs.json` - Scheduled task execution logs
+- `/workspace/project/data/chats.json` - Discovered chats and group activity
 - `/workspace/project/data/registered_groups.json` - Registered group config
 - `/workspace/project/data/sessions.json` - Persisted Copilot session IDs
 - `/workspace/project/data/router_state.json` - Message loop cursors and router state
@@ -125,16 +128,10 @@ echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).jso
 
 Then wait a moment and re-read `available_groups.json`.
 
-**Fallback**: Query the SQLite database directly for discovered chats only:
+**Fallback**: Read discovered chats directly from JSON:
 
 ```bash
-sqlite3 /workspace/project/store/messages.db "
-  SELECT jid, name, last_message_time
-  FROM chats
-  WHERE jid LIKE '%@g.us' AND jid != '__group_sync__'
-  ORDER BY last_message_time DESC
-  LIMIT 10;
-"
+cat /workspace/project/data/chats.json
 ```
 
 ### Registered Groups Config

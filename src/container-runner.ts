@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { approveAll, CopilotClient } from '@github/copilot-sdk';
 import type { CopilotSession, SessionConfig, SessionEvent } from '@github/copilot-sdk';
-import { pathToFileURL } from 'url';
 
 import {
   CONTAINER_TIMEOUT,
@@ -425,11 +424,6 @@ function buildCliArgs(
   return args;
 }
 
-function appendNodeOption(nodeOptions: string | undefined, option: string): string {
-  if (!nodeOptions) return option;
-  return nodeOptions.includes(option) ? nodeOptions : `${nodeOptions} ${option}`;
-}
-
 function resolveCopilotCliPath(): string {
   const cliPath = path.join(PROJECT_ROOT, 'node_modules', '.bin', COPILOT_CLI_BINARY);
   if (!fs.existsSync(cliPath)) {
@@ -440,13 +434,7 @@ function resolveCopilotCliPath(): string {
 
 function buildCopilotCliEnv(
   sdkEnv: Record<string, string | undefined>,
-  sqliteLoaderPath: string,
 ): Record<string, string | undefined> {
-  const loaderOption = `--experimental-loader=${pathToFileURL(sqliteLoaderPath).href}`;
-  let nodeOptions = appendNodeOption(sdkEnv.NODE_OPTIONS, '--experimental-sqlite');
-  nodeOptions = appendNodeOption(nodeOptions, loaderOption);
-  nodeOptions = appendNodeOption(nodeOptions, '--disable-warning=ExperimentalWarning');
-
   const cliEnv = { ...sdkEnv };
   delete cliEnv.GITHUB_TOKEN;
   delete cliEnv.COPILOT_GITHUB_TOKEN;
@@ -454,7 +442,6 @@ function buildCopilotCliEnv(
 
   return {
     ...cliEnv,
-    NODE_OPTIONS: nodeOptions,
   };
 }
 
@@ -755,7 +742,6 @@ export async function runContainerAgent(
 
   const sdkEnv = buildSdkEnv(context, input.isMain);
   const cliPath = resolveCopilotCliPath();
-  const sqliteLoaderPath = path.join(PROJECT_ROOT, 'src', 'copilot-node-sqlite-loader.mjs');
   const mcpServerPath = path.join(PROJECT_ROOT, 'src', 'ipc-mcp-stdio.mjs');
   const extraDirs = findMountedExtraDirectories();
   const sessionConfig = buildSessionConfig(
@@ -768,7 +754,7 @@ export async function runContainerAgent(
   const client = new CopilotClient({
     cwd: context.groupDir,
     cliPath,
-    env: buildCopilotCliEnv(sdkEnv, sqliteLoaderPath),
+    env: buildCopilotCliEnv(sdkEnv),
     cliArgs: buildCliArgs(input, context, extraDirs),
     logLevel: 'warning',
     useLoggedInUser: true,

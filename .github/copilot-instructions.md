@@ -17,7 +17,7 @@ npm run format         # Prettier write
 
 ## Architecture
 
-Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Message history, chat discovery, and scheduled tasks are stored in SQLite; lightweight runtime state (`router_state.json`, `sessions.json`, `registered_groups.json`) is stored in `data/` as JSON. Messages are routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
+Single Node.js process. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) self-register at startup via `src/channels/registry.ts`. Runtime storage is JSON-backed under `data/` (`messages.json`, `scheduled_tasks.json`, `task_run_logs.json`, `chats.json`, `router_state.json`, `sessions.json`, `registered_groups.json`). Messages are routed to Copilot agents running as local child processes (one active runner per group queue slot). Each group has isolated session state, working files, and memory.
 
 **Message flow:**
 
@@ -40,8 +40,8 @@ Channel → db.storeMessage() → message loop polls → GroupQueue
 | `src/index.ts` | Orchestrator: channels, message loop, agent invocation |
 | `src/container-runner.ts` | Spawns local runners, prepares runtime dirs, parses output |
 | `src/ipc.ts` | IPC watcher: processes task/message files from local runners |
-| `src/db.ts` | SQLite data layer plus migration bridge into JSON runtime state |
-| `src/state-files.ts` | JSON-backed runtime state for router state, sessions, and registered groups |
+| `src/db.ts` | JSON-backed message/task storage plus legacy SQLite import bridge |
+| `src/state-files.ts` | JSON-backed runtime state for chats, router state, sessions, and registered groups |
 | `src/group-queue.ts` | Concurrency manager (default max 5 active runners) |
 | `src/router.ts` | XML message formatting, outbound routing |
 | `src/config.ts` | All env vars and computed paths |
@@ -62,11 +62,11 @@ logger.info({ groupJid, count }, 'Messages processed');
 logger.error({ err, group: name }, 'Agent failed');
 ```
 
-### Database
-`src/db.ts` uses **better-sqlite3** (synchronous) for messages, chats, and scheduled tasks. Runtime state such as router cursors, Copilot session IDs, and registered groups is stored in JSON via `src/state-files.ts`. SQLite schema changes go in `createSchema()` using `ALTER TABLE` wrapped in try/catch for idempotency. No ORM.
+### Storage
+`src/db.ts` stores messages, scheduled tasks, and task run logs as JSON files in `data/`. Runtime state such as discovered chats, router cursors, Copilot session IDs, and registered groups is stored in separate JSON files via `src/state-files.ts`. Preserve the existing storage API and use atomic temp-file-plus-rename writes for on-disk updates.
 
 ```ts
-db.prepare('INSERT INTO messages (id, text) VALUES (?, ?)').run(id, text);
+storeMessage(message);
 ```
 
 ### Channel Registration
@@ -119,7 +119,7 @@ Key env vars: `ASSISTANT_NAME` (trigger prefix), `CONTAINER_TIMEOUT`, `MAX_CONCU
 
 ## Testing
 
-Vitest. Tests live alongside source as `*.test.ts`. Use `_initTestDatabase()` from `src/db.ts` for an in-memory SQLite instance in tests. Skill tests have a separate config (`vitest.skills.config.ts`) and live in `.copilot/skills/**/tests/`.
+Vitest. Tests live alongside source as `*.test.ts`. Use `_initTestDatabase()` from `src/db.ts` for isolated in-memory storage in tests. Skill tests have a separate config (`vitest.skills.config.ts`) and live in `.copilot/skills/**/tests/`.
 
 ## PR Guidelines
 

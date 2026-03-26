@@ -5,7 +5,7 @@ description: Install the claw CLI tool — run NanoClaw agents locally from the 
 
 # claw — NanoClaw CLI
 
-`claw` is a Python CLI that sends prompts directly to the local NanoClaw agent runner from the terminal. It reads registered groups from the NanoClaw database, picks up secrets from `.env`, prepares the same runtime directories as the main app, and pipes a JSON payload into the runner.
+`claw` is a Python CLI that sends prompts directly to the local NanoClaw agent runner from the terminal. It reads registered groups from NanoClaw's JSON state files, picks up secrets from `.env`, prepares the same runtime directories as the main app, and pipes a JSON payload into the runner.
 
 ## What it does
 
@@ -59,7 +59,7 @@ source ~/.zshrc   # or ~/.bashrc
 claw --list-groups
 ```
 
-You should see registered groups. If NanoClaw isn't running or the database doesn't exist yet, the list will be empty — that's fine.
+You should see registered groups. If NanoClaw isn't running or the JSON state file doesn't exist yet, the list will be empty — that's fine.
 
 ## Usage Examples
 
@@ -116,7 +116,7 @@ If the agent crashes before emitting the output sentinel, `claw` falls back to p
 
 ### Override the NanoClaw directory
 
-If `claw` can't find your database or `.env`, set the `NANOCLAW_DIR` environment variable:
+If `claw` can't find your JSON state files or `.env`, set the `NANOCLAW_DIR` environment variable:
 
 ```bash
 export NANOCLAW_DIR=/path/to/your/nanoclaw

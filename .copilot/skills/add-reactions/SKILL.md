@@ -5,7 +5,7 @@ description: Add WhatsApp emoji reaction support — receive, send, store, and s
 
 # Add Reactions
 
-This skill adds emoji reaction support to NanoClaw's WhatsApp channel: receive and store reactions, send reactions from the container agent via MCP tool, and query reaction history from SQLite.
+This skill adds emoji reaction support to NanoClaw's WhatsApp channel: receive and store reactions, send reactions from the container agent via MCP tool, and query reaction history from NanoClaw's local storage.
 
 ## Phase 1: Pre-flight
 
@@ -45,13 +45,13 @@ git merge whatsapp/skill/reactions || {
 ```
 
 This adds:
-- `scripts/migrate-reactions.ts` (database migration for `reactions` table with composite PK and indexes)
+- `scripts/migrate-reactions.ts` (storage migration for `reactions` data with composite keys and indexes)
 - `src/status-tracker.ts` (forward-only emoji state machine for message lifecycle signaling, with persistence and retry)
 - `src/status-tracker.test.ts` (unit tests for StatusTracker)
 - `container/skills/reactions/SKILL.md` (agent-facing documentation for the `react_to_message` MCP tool)
 - Reaction support in `src/db.ts`, `src/channels/whatsapp.ts`, `src/types.ts`, `src/ipc.ts`, `src/index.ts`, `src/group-queue.ts`, and `container/agent-runner/src/ipc-mcp-stdio.ts`
 
-### Run database migration
+### Run storage migration
 
 ```bash
 npx tsx scripts/migrate-reactions.ts
@@ -88,10 +88,10 @@ launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 
 1. Send a message from your phone
 2. React to it with an emoji on WhatsApp
-3. Check the database:
+3. Check the stored reaction data:
 
 ```bash
-sqlite3 store/messages.db "SELECT * FROM reactions ORDER BY timestamp DESC LIMIT 5;"
+cat data/reactions.json
 ```
 
 ### Test sending reactions
@@ -100,7 +100,7 @@ Ask the agent to react to a message via the `react_to_message` MCP tool. Check y
 
 ## Troubleshooting
 
-### Reactions not appearing in database
+### Reactions not appearing in storage
 
 - Check NanoClaw logs for `Failed to process reaction` errors
 - Verify the chat is registered
@@ -108,7 +108,7 @@ Ask the agent to react to a message via the `react_to_message` MCP tool. Check y
 
 ### Migration fails
 
-- Ensure `store/messages.db` exists and is accessible
+- Ensure the reaction storage file created by the skill exists and is accessible
 - If "table reactions already exists", the migration already ran — skip it
 
 ### Agent can't send reactions
