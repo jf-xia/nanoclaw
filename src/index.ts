@@ -22,7 +22,6 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
-import { ensureAgentRunnerReady } from './container-runtime.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -214,7 +213,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     'Processing messages',
   );
 
-  // Track idle timer for closing stdin when agent is idle
+  // Track idle timer for closing agent input when the session goes idle
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   const resetIdleTimer = () => {
@@ -222,7 +221,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     idleTimer = setTimeout(() => {
       logger.debug(
         { group: group.name },
-        'Idle timeout, closing container stdin',
+        'Idle timeout, closing agent input',
       );
       queue.closeStdin(chatJid);
     }, IDLE_TIMEOUT);
@@ -341,8 +340,8 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
       },
-      (proc, containerName) =>
-        queue.registerProcess(chatJid, proc, containerName, group.folder),
+      (agentId, groupFolder) =>
+        queue.registerProcess(chatJid, agentId, groupFolder),
       wrappedOnOutput,
     );
 
@@ -482,12 +481,7 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureAgentSystemReady(): void {
-  ensureAgentRunnerReady();
-}
-
 async function main(): Promise<void> {
-  ensureAgentSystemReady();
   initDatabase();
   logger.info('Database initialized');
   loadState();

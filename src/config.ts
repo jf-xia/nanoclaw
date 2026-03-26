@@ -22,10 +22,12 @@ export const PROJECT_ROOT = process.cwd();
 export const PROJECT_CONFIG_DIR = path.resolve(PROJECT_ROOT, 'config');
 
 // Project-local security config files
+// todo4fix: remove mount-allowlist.json file , just code the json structure in src/config.ts and read it directly from there instead of disk
 export const MOUNT_ALLOWLIST_PATH = path.join(
   PROJECT_CONFIG_DIR,
   'mount-allowlist.json',
 );
+// todo4fix: remove sender-allowlist.json file , just code the json structure in src/config.ts and read it directly from there instead of disk
 export const SENDER_ALLOWLIST_PATH = path.join(
   PROJECT_CONFIG_DIR,
   'sender-allowlist.json',
